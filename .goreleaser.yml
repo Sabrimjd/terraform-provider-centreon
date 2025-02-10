@@ -15,7 +15,7 @@ builds:
   flags:
     - -trimpath
   ldflags:
-    - '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}'
+    - '-s -w -X main.version={{.Version}}'
   goos:
     - freebsd
     - windows
@@ -58,4 +58,4 @@ release:
   # If you want to manually examine the release before its live, uncomment this line:
   # draft: true
 changelog:
-  disable: true
+  skip: true
