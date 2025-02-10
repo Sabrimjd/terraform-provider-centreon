@@ -1,9 +1,40 @@
-# Examples
+# Centreon Provider Examples
 
-This directory contains examples that are mostly used for documentation, but can also be run/tested manually via the Terraform CLI.
+This directory contains examples of using the Centreon Terraform provider.
 
-The document generation tool looks for files in the following locations by default. All other *.tf files besides the ones mentioned below are ignored by the documentation tool. This is useful for creating examples that can run and/or are testable even if some parts are not relevant for the documentation.
+## Example Files
 
-* **provider/provider.tf** example file for the provider index page
-* **data-sources/`full data source name`/data-source.tf** example file for the named data source page
-* **resources/`full resource name`/resource.tf** example file for the named data source page
+- `provider-install-verification/`: Basic example that verifies the provider installation and shows how to fetch platform information.
+
+## Running the Examples
+
+1. First, ensure you have valid Centreon API credentials.
+
+2. Update the provider configuration in the example with your Centreon server details:
+```hcl
+provider "centreon" {
+  protocol     = "https"
+  server       = "your-centreon-server"
+  port         = "443"
+  api_version  = "latest"
+  api_key      = "your-api-key"
+}
+```
+
+3. Initialize Terraform:
+```sh
+terraform init
+```
+
+4. Run Terraform:
+```sh
+terraform apply
+```
+
+This will execute the example configuration and show you the outputs.
+
+## Notes
+
+- Make sure to replace sensitive values (like api_key) with your actual credentials
+- Never commit sensitive credentials to version control
+- Consider using variables or environment variables for sensitive values in production
