@@ -1,6 +1,6 @@
 module terraform-provider-centreon
 
-go 1.23.6
+go 1.23
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
