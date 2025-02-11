@@ -8,11 +8,11 @@ terraform {
 }
 
 provider "centreon" {
-  protocol     = "https"
-  server       = "centreon.prod.sps.lan"
-  port         = "443"
-  api_version  = "latest"
-  api_key      = "QdEYyou1/XfIRgZQmeeKBaLmYvNBWqaENgsPiPr0Vt5ITiIUFL6d0qeH/yNSaEiw"
+  protocol    = "https"
+  server      = "centreon.acme.lan"
+  port        = "443"
+  api_version = "latest"
+  api_key     = "YOUR_API_KEY"
 }
 
 data "centreon_platform_info" "info" {
