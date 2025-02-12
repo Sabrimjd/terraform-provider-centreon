@@ -2,7 +2,7 @@
 
 This Terraform Provider allows you to interact with Centreon through its API. It provides the ability to manage and query Centreon resources through Terraform.
 
-# DO NOT USE IN PRODUCTION
+> ⚠️ **Warning**: This provider is in early stages of development and is not ready for production use. Features may be incomplete, and breaking changes can occur without notice. Use it for testing and evaluation purposes only.
 
 ## Requirements
 
