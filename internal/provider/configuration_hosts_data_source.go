@@ -36,11 +36,6 @@ type hostGroupModel struct {
 	Name types.String `tfsdk:"name"`
 }
 
-type searchModel struct {
-	Name  types.String `tfsdk:"name"`
-	Value types.String `tfsdk:"value"`
-}
-
 type hostModel struct {
 	ID                     types.Int64           `tfsdk:"id"`
 	Name                   types.String          `tfsdk:"name"`

@@ -110,10 +110,15 @@ func (p *centreonProvider) DataSources(_ context.Context) []func() datasource.Da
 	return []func() datasource.DataSource{
 		NewPlatformInfoDataSource,
 		NewConfigurationHostsDataSource,
+		NewMonitoringServersDataSource,
+		NewHostGroupsDataSource,
+		NewHostTemplatesDataSource,
 	}
 }
 
 // Resources defines the resources implemented in the provider.
 func (p *centreonProvider) Resources(_ context.Context) []func() resource.Resource {
-	return nil
+	return []func() resource.Resource{
+		NewHostResource,
+	}
 }
