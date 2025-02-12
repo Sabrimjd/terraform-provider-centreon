@@ -38,7 +38,7 @@ Examples of how to use the provider can be found in the [examples](examples/) di
 terraform {
   required_providers {
     centreon = {
-      source = "smjed.net/terraform-providers/centreon"
+      source = "Sabrimjd/centreon"
     }
   }
 }
@@ -55,8 +55,49 @@ provider "centreon" {
 data "centreon_platform_info" "info" {
 }
 
-output "installation_status" {
+output "is_installed" {
   value = data.centreon_platform_info.info.is_installed
+}
+
+output "has_upgrade_available" {
+  value = data.centreon_platform_info.info.has_upgrade_available
+}
+
+# Search for specific hosts
+data "centreon_host_search" "elastic_hosts" {
+  limit = 10
+  page  = 1
+  search = {
+    name  = "name"
+    value = "HPLESMBE1-010"
+  }
+}
+
+output "host_details" {
+  value = data.centreon_host_search.elastic_hosts.hosts
+}
+
+# Search for hosts in configuration
+data "centreon_configuration_hosts" "elastic_hosts" {
+  limit = 10
+  page  = 1
+  search = {
+    name  = "name"
+    value = "HPLESMBE1-010"
+  }
+}
+
+output "hosts" {
+  value = data.centreon_configuration_hosts.elastic_hosts.hosts
+}
+
+# Access specific host attributes
+output "first_host_name" {
+  value = length(data.centreon_configuration_hosts.elastic_hosts.hosts) > 0 ? data.centreon_configuration_hosts.elastic_hosts.hosts[0].name : ""
+}
+
+output "first_host_groups" {
+  value = length(data.centreon_host_search.elastic_hosts.hosts) > 0 ? data.centreon_host_search.elastic_hosts.hosts[0].groups : []
 }
 ```
 
