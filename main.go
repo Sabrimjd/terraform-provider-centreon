@@ -8,6 +8,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
+// Run "go generate" to format example terraform files and generate the docs for the registry/website
+
+// Run the docs generation tool, check its repository for more information on how it works and how docs
+// can be customized.
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+
 var (
 	// these will be set by the goreleaser configuration
 	// to appropriate values for the compiled binary.
@@ -24,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/providers/Sabrimjd/centreon",
+		Address: "registry.terraform.io/sabrimjd/centreon",
 		Debug:   debug,
 	}
 
