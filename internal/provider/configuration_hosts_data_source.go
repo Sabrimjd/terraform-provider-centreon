@@ -45,28 +45,28 @@ type searchModel struct {
 }
 
 type hostModel struct {
-	ID                     types.Int64            `tfsdk:"id"`
-	Name                   types.String           `tfsdk:"name"`
-	Alias                  types.String           `tfsdk:"alias"`
-	Address                types.String           `tfsdk:"address"`
-	MonitoringServer       monitoringServerModel  `tfsdk:"monitoring_server"`
-	Templates              []hostTemplateModel    `tfsdk:"templates"`
-	NormalCheckInterval    types.String           `tfsdk:"normal_check_interval"`
-	RetryCheckInterval     types.String           `tfsdk:"retry_check_interval"`
-	NotificationTimeperiod types.String           `tfsdk:"notification_timeperiod"`
-	CheckTimeperiod        types.String           `tfsdk:"check_timeperiod"`
-	Severity               types.String           `tfsdk:"severity"`
-	Categories             []types.String         `tfsdk:"categories"`
-	Groups                 []hostGroupModel       `tfsdk:"groups"`
-	IsActivated            types.Bool             `tfsdk:"is_activated"`
+	ID                     types.Int64           `tfsdk:"id"`
+	Name                   types.String          `tfsdk:"name"`
+	Alias                  types.String          `tfsdk:"alias"`
+	Address                types.String          `tfsdk:"address"`
+	MonitoringServer       monitoringServerModel `tfsdk:"monitoring_server"`
+	Templates              []hostTemplateModel   `tfsdk:"templates"`
+	NormalCheckInterval    types.String          `tfsdk:"normal_check_interval"`
+	RetryCheckInterval     types.String          `tfsdk:"retry_check_interval"`
+	NotificationTimeperiod types.String          `tfsdk:"notification_timeperiod"`
+	CheckTimeperiod        types.String          `tfsdk:"check_timeperiod"`
+	Severity               types.String          `tfsdk:"severity"`
+	Categories             []types.String        `tfsdk:"categories"`
+	Groups                 []hostGroupModel      `tfsdk:"groups"`
+	IsActivated            types.Bool            `tfsdk:"is_activated"`
 }
 
 type configurationHostsDataSourceModel struct {
-	Limit  types.Int64   `tfsdk:"limit"`
-	Page   types.Int64   `tfsdk:"page"`
-	Search searchModel   `tfsdk:"search"`
-	Hosts  []hostModel   `tfsdk:"hosts"`
-	Id     types.String  `tfsdk:"id"`
+	Limit  types.Int64  `tfsdk:"limit"`
+	Page   types.Int64  `tfsdk:"page"`
+	Search searchModel  `tfsdk:"search"`
+	Hosts  []hostModel  `tfsdk:"hosts"`
+	Id     types.String `tfsdk:"id"`
 }
 
 func (d *configurationHostsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -84,8 +84,8 @@ func (d *configurationHostsDataSource) Schema(_ context.Context, _ datasource.Sc
 			"page": schema.Int64Attribute{
 				Description: "Page number",
 				Required:    true,
-				},
-				"search": schema.ObjectAttribute{
+			},
+			"search": schema.ObjectAttribute{
 				Description: "Search criteria",
 				Optional:    true,
 				AttributeTypes: map[string]attr.Type{
@@ -208,8 +208,8 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 	// Create search JSON
 	searchQuery := "{}"
 	if !state.Search.Name.IsNull() && !state.Search.Value.IsNull() {
-		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}", 
-			state.Search.Name.ValueString(), 
+		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
+			state.Search.Name.ValueString(),
 			state.Search.Value.ValueString())
 	}
 

@@ -99,9 +99,9 @@ func (c *Client) GetPlatformInfo() (*PlatformInfo, error) {
 }
 
 func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, error) {
-	url := fmt.Sprintf("%s/configuration/hosts?limit=%d&page=%d&search=%s", 
+	url := fmt.Sprintf("%s/configuration/hosts?limit=%d&page=%d&search=%s",
 		c.BaseURL, limit, page, search)
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
