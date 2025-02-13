@@ -1,6 +1,3 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package main
 
 import (
@@ -8,16 +5,23 @@ import (
 	"flag"
 	"log"
 	"terraform-provider-centreon/internal/provider"
-
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
-// these will be set by the goreleaser configuration
-// to appropriate values for the compiled binary.
-var version string = "dev"
+// Run "go generate" to format example terraform files and generate the docs for the registry/website
 
-// goreleaser can pass other information to the main package, such as the specific commit
-// https://goreleaser.com/cookbooks/using-main.version/
+// Run the docs generation tool, check its repository for more information on how it works and how docs
+// can be customized.
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+
+var (
+	// these will be set by the goreleaser configuration
+	// to appropriate values for the compiled binary.
+	version string = "dev"
+
+	// goreleaser can pass other information to the main package, such as the specific commit
+	// https://goreleaser.com/cookbooks/using-main.version/
+)
 
 func main() {
 	var debug bool
@@ -26,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/smjed/centreon",
+		Address: "registry.terraform.io/sabrimjd/centreon",
 		Debug:   debug,
 	}
 

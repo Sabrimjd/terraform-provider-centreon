@@ -1,6 +1,3 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package provider
 
 import (
@@ -60,15 +57,15 @@ func (p *centreonProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 			},
 			"server": schema.StringAttribute{
 				Required:    true,
-				Description: "Centreon server hostname",
+				Description: "Centreon server hostname (eg. 'centreon.example.com')",
 			},
 			"port": schema.StringAttribute{
 				Required:    true,
-				Description: "Centreon server port",
+				Description: "Centreon server port (eg. 80, 443)",
 			},
 			"api_version": schema.StringAttribute{
 				Required:    true,
-				Description: "API version to use (e.g., 'latest')",
+				Description: "API version to use (e.g., 'latest', 'v24.10')",
 			},
 			"api_key": schema.StringAttribute{
 				Required:    true,

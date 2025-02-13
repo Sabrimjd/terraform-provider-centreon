@@ -2,6 +2,8 @@
 
 This Terraform Provider allows you to interact with Centreon through its API. It provides the ability to manage and query Centreon resources through Terraform.
 
+# DO NOT USE IN PRODUCTION
+
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.0
@@ -59,10 +61,6 @@ output "is_installed" {
   value = data.centreon_platform_info.info.is_installed
 }
 
-output "has_upgrade_available" {
-  value = data.centreon_platform_info.info.has_upgrade_available
-}
-
 # Search for specific hosts
 data "centreon_host_search" "elastic_hosts" {
   limit = 10
@@ -77,28 +75,6 @@ output "host_details" {
   value = data.centreon_host_search.elastic_hosts.hosts
 }
 
-# Search for hosts in configuration
-data "centreon_configuration_hosts" "elastic_hosts" {
-  limit = 10
-  page  = 1
-  search = {
-    name  = "name"
-    value = "HPLESMBE1-010"
-  }
-}
-
-output "hosts" {
-  value = data.centreon_configuration_hosts.elastic_hosts.hosts
-}
-
-# Access specific host attributes
-output "first_host_name" {
-  value = length(data.centreon_configuration_hosts.elastic_hosts.hosts) > 0 ? data.centreon_configuration_hosts.elastic_hosts.hosts[0].name : ""
-}
-
-output "first_host_groups" {
-  value = length(data.centreon_host_search.elastic_hosts.hosts) > 0 ? data.centreon_host_search.elastic_hosts.hosts[0].groups : []
-}
 ```
 
 ## Developing the Provider
