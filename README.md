@@ -2,7 +2,7 @@
 
 This Terraform Provider allows you to interact with Centreon through its API. It provides the ability to manage and query Centreon resources through Terraform.
 
-# DO NOT USE IN PRODUCTION
+> ⚠️ **Warning**: This provider is in early stages of development and is not ready for production use. Features may be incomplete, and breaking changes can occur without notice. Use it for testing and evaluation purposes only.
 
 ## Requirements
 
@@ -51,6 +51,34 @@ provider "centreon" {
   port         = "443"
   api_version  = "latest"
   api_key      = "your-api-key"
+}
+
+# Create a new host
+resource "centreon_host" "web_server" {
+  monitoring_server_id = 1
+  name                = "web-server-01"
+  address             = "192.168.1.100"
+  alias               = "Production Web Server"
+
+  # Server checks configuration
+  check_command_id       = 1
+  check_command_args     = ["80", "300"]
+  max_check_attempts     = 3
+  normal_check_interval  = 5
+  retry_check_interval   = 1
+
+  # Notification settings
+  notification_enabled     = 1
+  notification_options     = 5  # DOWN (1) + RECOVERY (4)
+  notification_interval    = 30
+  notification_timeperiod_id = 1
+
+  # Host grouping
+  templates  = [1]  # List of template IDs
+  groups     = [1]  # List of group IDs
+
+  # Activation state
+  is_activated = true
 }
 
 # Get platform information

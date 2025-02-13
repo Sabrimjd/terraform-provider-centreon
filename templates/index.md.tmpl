@@ -6,6 +6,8 @@ description: |-
 
 # Centreon Provider
 
+> ⚠️ **Warning**: This provider is in early stages of development and is not ready for production use. Features may be incomplete, and breaking changes can occur without notice. Use it for testing and evaluation purposes only.
+
 The Centreon provider provides resources to interact with Centreon application using API V2.
 
 ## Example Usage
