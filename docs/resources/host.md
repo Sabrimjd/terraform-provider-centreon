@@ -25,9 +25,7 @@ Manages a Centreon host.
 
 - `acknowledgement_timeout` (Number) Acknowledgement timeout
 - `action_url` (String) URL for additional host actions
-- `active_check_enabled` (Number) Whether active checks are enabled (0=disabled, 1=enabled, 2=default)
-- `add_inherited_contact` (Boolean) Whether to add inherited contacts
-- `add_inherited_contact_group` (Boolean) Whether to add inherited contact groups
+- `active_check_enabled` (Number) Whether active checks are enabled (0=disabled, 1=enabled)
 - `alias` (String) Host alias
 - `categories` (List of Number) List of category IDs
 - `check_command_args` (List of String) Check command arguments
@@ -36,11 +34,12 @@ Manages a Centreon host.
 - `comment` (String) Comments about the host
 - `event_handler_command_args` (List of String) Event handler command arguments
 - `event_handler_command_id` (Number) Event handler command ID
-- `event_handler_enabled` (Number) Whether event handler is enabled (0=disabled, 1=enabled, 2=default)
+- `event_handler_enabled` (Number) Whether event handler is enabled (0=disabled, 1=enabled)
 - `first_notification_delay` (Number) Delay before first notification
-- `flap_detection_enabled` (Number) Whether flap detection is enabled (0=disabled, 1=enabled, 2=default)
-- `freshness_checked` (Number) Whether freshness is checked (0=disabled, 1=enabled, 2=default)
+- `flap_detection_enabled` (Number) Whether flap detection is enabled (0=disabled, 1=enabled)
+- `freshness_checked` (Number) Whether freshness is checked (0=disabled, 1=enabled)
 - `freshness_threshold` (Number) Freshness threshold in seconds
+- `geo_coords` (String) Geographic coordinates of the host
 - `groups` (List of Number) List of group IDs
 - `high_flap_threshold` (Number) High flap threshold
 - `icon_alternative` (String) Alternative text for icon
@@ -52,11 +51,11 @@ Manages a Centreon host.
 - `normal_check_interval` (Number) Interval between normal checks
 - `note` (String) Additional notes about the host
 - `note_url` (String) URL with additional host information
-- `notification_enabled` (Number) Whether notifications are enabled (0=disabled, 1=enabled, 2=default)
+- `notification_enabled` (Number) Whether notifications are enabled (0=disabled, 1=enabled)
 - `notification_interval` (Number) Interval between notifications
 - `notification_options` (Number) Notification options (sum of: 1=DOWN, 2=UNREACHABLE, 4=RECOVERY, 8=FLAPPING, 16=DOWNTIME_SCHEDULED)
 - `notification_timeperiod_id` (Number) Notification timeperiod ID
-- `passive_check_enabled` (Number) Whether passive checks are enabled (0=disabled, 1=enabled, 2=default)
+- `passive_check_enabled` (Number) Whether passive checks are enabled (0=disabled, 1=enabled)
 - `recovery_notification_delay` (Number) Delay before recovery notification
 - `retry_check_interval` (Number) Interval between retry checks
 - `severity_id` (Number) Severity ID
