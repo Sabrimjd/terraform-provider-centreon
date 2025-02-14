@@ -109,7 +109,7 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 func (p *centreonProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewPlatformInfoDataSource,
-		NewConfigurationHostsDataSource,
+		NewHostsDataSource,
 		NewMonitoringServersDataSource,
 		NewHostGroupsDataSource,
 		NewHostTemplatesDataSource,
