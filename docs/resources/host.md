@@ -39,7 +39,7 @@ Manages a Centreon host.
 - `flap_detection_enabled` (Number) Whether flap detection is enabled (0=disabled, 1=enabled)
 - `freshness_checked` (Number) Whether freshness is checked (0=disabled, 1=enabled)
 - `freshness_threshold` (Number) Freshness threshold in seconds
-- `geo_coords` (String) Geographic coordinates of the host
+- `geo_coords` (String) Geographic coordinates of the host (format: latitude,longitude)
 - `groups` (List of Number) List of group IDs
 - `high_flap_threshold` (Number) High flap threshold
 - `icon_alternative` (String) Alternative text for icon
@@ -59,7 +59,7 @@ Manages a Centreon host.
 - `recovery_notification_delay` (Number) Delay before recovery notification
 - `retry_check_interval` (Number) Interval between retry checks
 - `severity_id` (Number) Severity ID
-- `snmp_community` (String) Community of the SNMP agent
+- `snmp_community` (String, Sensitive) Community of the SNMP agent
 - `snmp_version` (String) Version of the SNMP agent (1, 2c, or 3)
 - `templates` (List of Number) List of template IDs
 - `timezone_id` (Number) Timezone ID

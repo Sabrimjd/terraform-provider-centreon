@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
@@ -242,64 +243,64 @@ func NewClient(protocol, server, port, apiVersion, apiKey string) *Client {
 	}
 }
 
+func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
+	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, HandleAPIError(resp, body)
+	}
+
+	return resp, nil
+}
+
 func (c *Client) GetPlatformInfo() (*PlatformInfo, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/platform/installation/status", c.BaseURL), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
 	var platformInfo PlatformInfo
 	if err := json.NewDecoder(resp.Body).Decode(&platformInfo); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-
 	return &platformInfo, nil
 }
 
 func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, error) {
 	url := fmt.Sprintf("%s/configuration/hosts?limit=%d&page=%d&search=%s",
 		c.BaseURL, limit, page, search)
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
 	var hostResponse HostResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hostResponse); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-
 	return &hostResponse, nil
 }
 
 func (c *Client) CreateHost(host *CreateHostRequest) error {
 	url := fmt.Sprintf("%s/configuration/hosts", c.BaseURL)
-
 	jsonData, err := json.Marshal(host)
 	if err != nil {
 		return fmt.Errorf("error marshaling host data: %v", err)
@@ -307,42 +308,33 @@ func (c *Client) CreateHost(host *CreateHostRequest) error {
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating request: %v", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		var errorResponse map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
-			return fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-		}
-		return fmt.Errorf("API request failed: %v", errorResponse)
-	}
-
+	resp.Body.Close()
 	return nil
 }
 
 func (c *Client) UpdateHost(host *CreateHostRequest) error {
-	// First, get the host ID using the name
 	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", host.Name))
 	if err != nil {
 		return fmt.Errorf("error getting host ID: %v", err)
 	}
 	if len(hosts.Result) == 0 {
-		return fmt.Errorf("host not found: %s", host.Name)
+		return &APIError{
+			StatusCode: http.StatusNotFound,
+			Message:    fmt.Sprintf("Host not found: %s", host.Name),
+			Code:       "NOT_FOUND",
+		}
 	}
 
 	hostID := hosts.Result[0].ID
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
-
 	jsonData, err := json.Marshal(host)
 	if err != nil {
 		return fmt.Errorf("error marshaling host data: %v", err)
@@ -350,151 +342,105 @@ func (c *Client) UpdateHost(host *CreateHostRequest) error {
 
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating request: %v", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	// Accept both 200 OK and 204 No Content as success responses
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		var errorResponse map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
-			return fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-		}
-		return fmt.Errorf("API request failed: %v", errorResponse)
-	}
-
+	resp.Body.Close()
 	return nil
 }
 
 func (c *Client) DeleteHost(name string) error {
-	// First, get the host ID using the name
 	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", name))
 	if err != nil {
 		return fmt.Errorf("error getting host ID: %v", err)
 	}
 	if len(hosts.Result) == 0 {
-		return fmt.Errorf("host not found: %s", name)
+		return &APIError{
+			StatusCode: http.StatusNotFound,
+			Message:    fmt.Sprintf("Host not found: %s", name),
+			Code:       "NOT_FOUND",
+		}
 	}
 
 	hostID := hosts.Result[0].ID
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
-
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	// Accept both 200 OK and 204 No Content as success responses
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		var errorResponse map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&errorResponse); err != nil {
-			return fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-		}
-		return fmt.Errorf("API request failed: %v", errorResponse)
-	}
-
+	resp.Body.Close()
 	return nil
 }
 
 func (c *Client) GetMonitoringServers(limit int, page int, search string) (*MonitoringServersResponse, error) {
 	url := fmt.Sprintf("%s/configuration/monitoring-servers?limit=%d&page=%d&search=%s",
 		c.BaseURL, limit, page, search)
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
 	var response MonitoringServersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-
 	return &response, nil
 }
 
 func (c *Client) GetHostGroups(limit int, page int, search string) (*HostGroupsResponse, error) {
 	url := fmt.Sprintf("%s/monitoring/hostgroups?limit=%d&page=%d&search=%s",
 		c.BaseURL, limit, page, search)
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
 	var response HostGroupsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-
 	return &response, nil
 }
 
 func (c *Client) GetHostTemplates(limit int, page int, search string) (*HostTemplatesResponse, error) {
 	url := fmt.Sprintf("%s/configuration/hosts/templates?limit=%d&page=%d&search=%s",
 		c.BaseURL, limit, page, search)
-
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 
-	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
-
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-	}
-
 	var response HostTemplatesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-
 	return &response, nil
 }
