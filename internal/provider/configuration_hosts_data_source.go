@@ -240,7 +240,7 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 		// Convert []string to []types.String for Categories
 		categories := make([]types.String, len(host.Categories))
 		for j, cat := range host.Categories {
-			categories[j] = types.StringValue(cat)
+			categories[j] = types.StringValue(fmt.Sprintf("%d", cat))
 		}
 
 		state.Hosts[i] = hostModel{
@@ -254,11 +254,11 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 			},
 			Templates:              templates,
 			Groups:                 groups,
-			NormalCheckInterval:    types.StringValue(host.NormalCheckInterval),
-			RetryCheckInterval:     types.StringValue(host.RetryCheckInterval),
-			NotificationTimeperiod: types.StringValue(host.NotificationTimeperiod),
-			CheckTimeperiod:        types.StringValue(host.CheckTimeperiod),
-			Severity:               types.StringValue(host.Severity),
+			NormalCheckInterval:    types.StringValue(fmt.Sprintf("%d", host.NormalCheckInterval)),
+			RetryCheckInterval:     types.StringValue(fmt.Sprintf("%d", host.RetryCheckInterval)),
+			NotificationTimeperiod: types.StringValue(fmt.Sprintf("%d", host.NotificationTimeperiodID)),
+			CheckTimeperiod:        types.StringValue(fmt.Sprintf("%d", host.CheckTimeperiodID)),
+			Severity:               types.StringValue(fmt.Sprintf("%d", host.SeverityID)),
 			Categories:             categories,
 			IsActivated:            types.BoolValue(host.IsActivated),
 		}
