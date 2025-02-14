@@ -10,7 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
 
-// SNMPVersionValidator validates that SNMP version is one of: 1, 2c, or 3
+// SNMPVersionValidator validates that SNMP version is one of: 1, 2c, or 3.
 type SNMPVersionValidator struct{}
 
 func (v SNMPVersionValidator) Description(ctx context.Context) string {
@@ -35,7 +35,7 @@ func (v SNMPVersionValidator) ValidateString(ctx context.Context, req validator.
 	}
 }
 
-// HostnameOrIPValidator validates that a string is either a valid hostname or IP address
+// HostnameOrIPValidator validates that a string is either a valid hostname or IP address.
 type HostnameOrIPValidator struct{}
 
 func (v HostnameOrIPValidator) Description(ctx context.Context) string {
@@ -53,12 +53,12 @@ func (v HostnameOrIPValidator) ValidateString(ctx context.Context, req validator
 
 	value := req.ConfigValue.ValueString()
 
-	// Check if it's an IP address
+	// Check if it's an IP address.
 	if ip := net.ParseIP(value); ip != nil {
 		return
 	}
 
-	// Check if it's a valid hostname
+	// Check if it's a valid hostname.
 	hostnameRegex := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$`)
 	if !hostnameRegex.MatchString(value) {
 		resp.Diagnostics.AddError(
@@ -68,7 +68,7 @@ func (v HostnameOrIPValidator) ValidateString(ctx context.Context, req validator
 	}
 }
 
-// GeoCoordsValidator validates geographic coordinates in format "lat,long"
+// GeoCoordsValidator validates geographic coordinates in format "lat,long".
 type GeoCoordsValidator struct{}
 
 func (v GeoCoordsValidator) Description(ctx context.Context) string {
@@ -114,7 +114,7 @@ func (v GeoCoordsValidator) ValidateString(ctx context.Context, req validator.St
 	}
 }
 
-// NotificationOptionsValidator validates notification options
+// NotificationOptionsValidator validates notification options.
 type NotificationOptionsValidator struct{}
 
 func (v NotificationOptionsValidator) Description(ctx context.Context) string {
@@ -131,7 +131,7 @@ func (v NotificationOptionsValidator) ValidateInt64(ctx context.Context, req val
 	}
 
 	value := req.ConfigValue.ValueInt64()
-	validBits := int64(1 | 2 | 4 | 8 | 16) // All valid options combined
+	validBits := int64(1 | 2 | 4 | 8 | 16) // All valid options combined.
 
 	if value < 0 || value > validBits {
 		resp.Diagnostics.AddError(

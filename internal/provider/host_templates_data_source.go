@@ -21,51 +21,51 @@ type hostTemplatesDataSource struct {
 }
 
 type hostTemplateDetail struct {
-	ID                      types.Int64    `tfsdk:"id"`
-	Name                    types.String   `tfsdk:"name"`
-	Alias                   types.String   `tfsdk:"alias"`
-	SNMPVersion            types.String   `tfsdk:"snmp_version"`
-	TimezoneID             types.Int64    `tfsdk:"timezone_id"`
-	SeverityID             types.Int64    `tfsdk:"severity_id"`
-	CheckCommandID         types.Int64    `tfsdk:"check_command_id"`
-	CheckCommandArgs       []types.String `tfsdk:"check_command_args"`
-	CheckTimeperiodID      types.Int64    `tfsdk:"check_timeperiod_id"`
-	MaxCheckAttempts       types.Int64    `tfsdk:"max_check_attempts"`
-	NormalCheckInterval    types.Int64    `tfsdk:"normal_check_interval"`
-	RetryCheckInterval     types.Int64    `tfsdk:"retry_check_interval"`
-	ActiveCheckEnabled     types.Int64    `tfsdk:"active_check_enabled"`
-	PassiveCheckEnabled    types.Int64    `tfsdk:"passive_check_enabled"`
-	NotificationEnabled    types.Int64    `tfsdk:"notification_enabled"`
-	NotificationOptions    types.Int64    `tfsdk:"notification_options"`
-	NotificationInterval   types.Int64    `tfsdk:"notification_interval"`
-	NotificationTimeperiodID types.Int64  `tfsdk:"notification_timeperiod_id"`
-	AddInheritedContactGroup types.Bool   `tfsdk:"add_inherited_contact_group"`
-	AddInheritedContact    types.Bool    `tfsdk:"add_inherited_contact"`
-	FirstNotificationDelay types.Int64    `tfsdk:"first_notification_delay"`
-	RecoveryNotificationDelay types.Int64 `tfsdk:"recovery_notification_delay"`
-	AcknowledgementTimeout types.Int64    `tfsdk:"acknowledgement_timeout"`
-	FreshnessChecked      types.Int64    `tfsdk:"freshness_checked"`
-	FreshnessThreshold    types.Int64    `tfsdk:"freshness_threshold"`
-	FlapDetectionEnabled  types.Int64    `tfsdk:"flap_detection_enabled"`
-	LowFlapThreshold      types.Int64    `tfsdk:"low_flap_threshold"`
-	HighFlapThreshold     types.Int64    `tfsdk:"high_flap_threshold"`
-	EventHandlerEnabled   types.Int64    `tfsdk:"event_handler_enabled"`
-	EventHandlerCommandID types.Int64    `tfsdk:"event_handler_command_id"`
-	EventHandlerCommandArgs []types.String `tfsdk:"event_handler_command_args"`
-	NoteURL               types.String   `tfsdk:"note_url"`
-	Note                  types.String   `tfsdk:"note"`
-	ActionURL             types.String   `tfsdk:"action_url"`
-	IconID               types.Int64    `tfsdk:"icon_id"`
-	IconAlternative      types.String   `tfsdk:"icon_alternative"`
-	Comment              types.String   `tfsdk:"comment"`
-	IsLocked             types.Bool     `tfsdk:"is_locked"`
+	ID                        types.Int64    `tfsdk:"id"`
+	Name                      types.String   `tfsdk:"name"`
+	Alias                     types.String   `tfsdk:"alias"`
+	SNMPVersion               types.String   `tfsdk:"snmp_version"`
+	TimezoneID                types.Int64    `tfsdk:"timezone_id"`
+	SeverityID                types.Int64    `tfsdk:"severity_id"`
+	CheckCommandID            types.Int64    `tfsdk:"check_command_id"`
+	CheckCommandArgs          []types.String `tfsdk:"check_command_args"`
+	CheckTimeperiodID         types.Int64    `tfsdk:"check_timeperiod_id"`
+	MaxCheckAttempts          types.Int64    `tfsdk:"max_check_attempts"`
+	NormalCheckInterval       types.Int64    `tfsdk:"normal_check_interval"`
+	RetryCheckInterval        types.Int64    `tfsdk:"retry_check_interval"`
+	ActiveCheckEnabled        types.Int64    `tfsdk:"active_check_enabled"`
+	PassiveCheckEnabled       types.Int64    `tfsdk:"passive_check_enabled"`
+	NotificationEnabled       types.Int64    `tfsdk:"notification_enabled"`
+	NotificationOptions       types.Int64    `tfsdk:"notification_options"`
+	NotificationInterval      types.Int64    `tfsdk:"notification_interval"`
+	NotificationTimeperiodID  types.Int64    `tfsdk:"notification_timeperiod_id"`
+	AddInheritedContactGroup  types.Bool     `tfsdk:"add_inherited_contact_group"`
+	AddInheritedContact       types.Bool     `tfsdk:"add_inherited_contact"`
+	FirstNotificationDelay    types.Int64    `tfsdk:"first_notification_delay"`
+	RecoveryNotificationDelay types.Int64    `tfsdk:"recovery_notification_delay"`
+	AcknowledgementTimeout    types.Int64    `tfsdk:"acknowledgement_timeout"`
+	FreshnessChecked          types.Int64    `tfsdk:"freshness_checked"`
+	FreshnessThreshold        types.Int64    `tfsdk:"freshness_threshold"`
+	FlapDetectionEnabled      types.Int64    `tfsdk:"flap_detection_enabled"`
+	LowFlapThreshold          types.Int64    `tfsdk:"low_flap_threshold"`
+	HighFlapThreshold         types.Int64    `tfsdk:"high_flap_threshold"`
+	EventHandlerEnabled       types.Int64    `tfsdk:"event_handler_enabled"`
+	EventHandlerCommandID     types.Int64    `tfsdk:"event_handler_command_id"`
+	EventHandlerCommandArgs   []types.String `tfsdk:"event_handler_command_args"`
+	NoteURL                   types.String   `tfsdk:"note_url"`
+	Note                      types.String   `tfsdk:"note"`
+	ActionURL                 types.String   `tfsdk:"action_url"`
+	IconID                    types.Int64    `tfsdk:"icon_id"`
+	IconAlternative           types.String   `tfsdk:"icon_alternative"`
+	Comment                   types.String   `tfsdk:"comment"`
+	IsLocked                  types.Bool     `tfsdk:"is_locked"`
 }
 
 type hostTemplatesDataSourceModel struct {
-	Limit     types.Int64           `tfsdk:"limit"`
-	Page      types.Int64           `tfsdk:"page"`
-	Search    *searchModel          `tfsdk:"search"`
-	Templates []hostTemplateDetail  `tfsdk:"templates"`
+	Limit     types.Int64          `tfsdk:"limit"`
+	Page      types.Int64          `tfsdk:"page"`
+	Search    *searchModel         `tfsdk:"search"`
+	Templates []hostTemplateDetail `tfsdk:"templates"`
 	Id        types.String         `tfsdk:"id"`
 }
 
@@ -295,7 +295,7 @@ func (d *hostTemplatesDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 
 	// Initialize empty search if not provided
-	if (state.Search == nil) {
+	if state.Search == nil {
 		state.Search = &searchModel{
 			Name:  types.StringNull(),
 			Value: types.StringNull(),
@@ -501,44 +501,44 @@ func (d *hostTemplatesDataSource) Read(ctx context.Context, req datasource.ReadR
 		}
 
 		state.Templates[i] = hostTemplateDetail{
-			ID:                      types.Int64Value(int64(template.ID)),
-			Name:                    types.StringValue(template.Name),
-			Alias:                   types.StringValue(template.Alias),
-			SNMPVersion:            snmpVersion,
-			TimezoneID:             timezoneID,
-			SeverityID:             severityID,
-			CheckCommandID:         checkCommandID,
-			CheckCommandArgs:       checkCommandArgs,
-			CheckTimeperiodID:      checkTimeperiodID,
-			MaxCheckAttempts:       maxCheckAttempts,
-			NormalCheckInterval:    normalCheckInterval,
-			RetryCheckInterval:     retryCheckInterval,
-			ActiveCheckEnabled:     types.Int64Value(int64(template.ActiveCheckEnabled)),
-			PassiveCheckEnabled:    types.Int64Value(int64(template.PassiveCheckEnabled)),
-			NotificationEnabled:    types.Int64Value(int64(template.NotificationEnabled)),
-			NotificationOptions:    notificationOptions,
-			NotificationInterval:   notificationInterval,
-			NotificationTimeperiodID: notificationTimeperiodID,
-			AddInheritedContactGroup: types.BoolValue(template.AddInheritedContactGroup),
-			AddInheritedContact:    types.BoolValue(template.AddInheritedContact),
-			FirstNotificationDelay: firstNotificationDelay,
+			ID:                        types.Int64Value(int64(template.ID)),
+			Name:                      types.StringValue(template.Name),
+			Alias:                     types.StringValue(template.Alias),
+			SNMPVersion:               snmpVersion,
+			TimezoneID:                timezoneID,
+			SeverityID:                severityID,
+			CheckCommandID:            checkCommandID,
+			CheckCommandArgs:          checkCommandArgs,
+			CheckTimeperiodID:         checkTimeperiodID,
+			MaxCheckAttempts:          maxCheckAttempts,
+			NormalCheckInterval:       normalCheckInterval,
+			RetryCheckInterval:        retryCheckInterval,
+			ActiveCheckEnabled:        types.Int64Value(int64(template.ActiveCheckEnabled)),
+			PassiveCheckEnabled:       types.Int64Value(int64(template.PassiveCheckEnabled)),
+			NotificationEnabled:       types.Int64Value(int64(template.NotificationEnabled)),
+			NotificationOptions:       notificationOptions,
+			NotificationInterval:      notificationInterval,
+			NotificationTimeperiodID:  notificationTimeperiodID,
+			AddInheritedContactGroup:  types.BoolValue(template.AddInheritedContactGroup),
+			AddInheritedContact:       types.BoolValue(template.AddInheritedContact),
+			FirstNotificationDelay:    firstNotificationDelay,
 			RecoveryNotificationDelay: recoveryNotificationDelay,
-			AcknowledgementTimeout: acknowledgementTimeout,
-			FreshnessChecked:      types.Int64Value(int64(template.FreshnessChecked)),
-			FreshnessThreshold:    freshnessThreshold,
-			FlapDetectionEnabled:  types.Int64Value(int64(template.FlapDetectionEnabled)),
-			LowFlapThreshold:      lowFlapThreshold,
-			HighFlapThreshold:     highFlapThreshold,
-			EventHandlerEnabled:   types.Int64Value(int64(template.EventHandlerEnabled)),
-			EventHandlerCommandID: eventHandlerCommandID,
-			EventHandlerCommandArgs: eventHandlerCommandArgs,
-			NoteURL:               noteURL,
-			Note:                  note,
-			ActionURL:             actionURL,
-			IconID:               iconID,
-			IconAlternative:      iconAlternative,
-			Comment:              types.StringValue(template.Comment),
-			IsLocked:             types.BoolValue(template.IsLocked),
+			AcknowledgementTimeout:    acknowledgementTimeout,
+			FreshnessChecked:          types.Int64Value(int64(template.FreshnessChecked)),
+			FreshnessThreshold:        freshnessThreshold,
+			FlapDetectionEnabled:      types.Int64Value(int64(template.FlapDetectionEnabled)),
+			LowFlapThreshold:          lowFlapThreshold,
+			HighFlapThreshold:         highFlapThreshold,
+			EventHandlerEnabled:       types.Int64Value(int64(template.EventHandlerEnabled)),
+			EventHandlerCommandID:     eventHandlerCommandID,
+			EventHandlerCommandArgs:   eventHandlerCommandArgs,
+			NoteURL:                   noteURL,
+			Note:                      note,
+			ActionURL:                 actionURL,
+			IconID:                    iconID,
+			IconAlternative:           iconAlternative,
+			Comment:                   types.StringValue(template.Comment),
+			IsLocked:                  types.BoolValue(template.IsLocked),
 		}
 	}
 

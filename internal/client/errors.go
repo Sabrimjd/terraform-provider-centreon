@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// APIError represents an error returned by the Centreon API
+// APIError represents an error returned by the Centreon API.
 type APIError struct {
 	StatusCode int
 	Message    string
@@ -19,7 +19,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("API error: %s (status: %d)", e.Message, e.StatusCode)
 }
 
-// HandleAPIError creates an APIError from an HTTP response
+// HandleAPIError creates an APIError from an HTTP response.
 func HandleAPIError(resp *http.Response, body []byte) error {
 	message := string(body)
 	switch resp.StatusCode {
