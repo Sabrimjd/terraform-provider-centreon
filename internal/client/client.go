@@ -2,20 +2,23 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"terraform-provider-centreon/internal/logging"
 )
 
 type Client struct {
-	BaseURL    string
-	APIKey     string
-	Protocol   string
-	Server     string
-	Port       string
-	APIVersion string
-	HTTPClient *http.Client
+	BaseURL                        string
+	APIKey                         string
+	Protocol                       string
+	Server                         string
+	Port                           string
+	APIVersion                     string
+	HTTPClient                     *http.Client
+	GenerateAndReloadConfiguration bool
 }
 
 type PlatformInfo struct {
@@ -443,4 +446,31 @@ func (c *Client) GetHostTemplates(limit int, page int, search string) (*HostTemp
 		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
 	return &response, nil
+}
+
+// ReloadConfiguration generates and reloads configuration for all monitoring servers.
+func (c *Client) ReloadConfiguration() error {
+	url := fmt.Sprintf("%s/configuration/monitoring-servers/generate-and-reload", c.BaseURL)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %v", err)
+	}
+
+	logging.Info(context.Background(), "Reloading configuration",
+		map[string]interface{}{
+			"url": url,
+		})
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	logging.Info(context.Background(), "Configuration reload response",
+		map[string]interface{}{
+			"status_code": resp.StatusCode,
+		})
+
+	return nil
 }

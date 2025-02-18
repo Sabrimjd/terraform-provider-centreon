@@ -35,11 +35,12 @@ type centreonProvider struct {
 }
 
 type centreonProviderModel struct {
-	Protocol   types.String `tfsdk:"protocol"`
-	Server     types.String `tfsdk:"server"`
-	Port       types.String `tfsdk:"port"`
-	APIVersion types.String `tfsdk:"api_version"`
-	APIKey     types.String `tfsdk:"api_key"`
+	Protocol                       types.String `tfsdk:"protocol"`
+	Server                         types.String `tfsdk:"server"`
+	Port                           types.String `tfsdk:"port"`
+	APIVersion                     types.String `tfsdk:"api_version"`
+	APIKey                         types.String `tfsdk:"api_key"`
+	GenerateAndReloadConfiguration types.Bool   `tfsdk:"generate_and_reload_configuration"`
 }
 
 // Metadata returns the provider type name.
@@ -72,6 +73,10 @@ func (p *centreonProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 				Required:    true,
 				Sensitive:   true,
 				Description: "API key for authentication",
+			},
+			"generate_and_reload_configuration": schema.BoolAttribute{
+				Optional:    true,
+				Description: "When true, automatically generates and reloads the configuration for all monitoring servers after applying changes",
 			},
 		},
 	}
@@ -122,6 +127,7 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 		config.APIVersion.ValueString(),
 		config.APIKey.ValueString(),
 	)
+	client.GenerateAndReloadConfiguration = !config.GenerateAndReloadConfiguration.IsNull() && config.GenerateAndReloadConfiguration.ValueBool()
 
 	resp.DataSourceData = client
 	resp.ResourceData = client

@@ -331,6 +331,16 @@ func (r *hostResource) Configure(_ context.Context, req resource.ConfigureReques
 	r.client = client
 }
 
+// Helper function to handle configuration reload if enabled.
+func (r *hostResource) handleConfigurationReload() error {
+	if r.client.GenerateAndReloadConfiguration {
+		if err := r.client.ReloadConfiguration(); err != nil {
+			return fmt.Errorf("failed to generate and reload configuration: %v", err)
+		}
+	}
+	return nil
+}
+
 func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan hostResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -546,6 +556,15 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 		resp.Diagnostics.AddError(
 			"Error creating host",
 			fmt.Sprintf("Could not create host: %v", err),
+		)
+		return
+	}
+
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after creating host",
+			err.Error(),
 		)
 		return
 	}
@@ -891,6 +910,15 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after updating host",
+			err.Error(),
+		)
+		return
+	}
+
 	// Update state with plan
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -907,6 +935,15 @@ func (r *hostResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError(
 			"Error deleting host",
 			fmt.Sprintf("Could not delete host %s: %v", state.Name.ValueString(), err),
+		)
+		return
+	}
+
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after deleting host",
+			err.Error(),
 		)
 		return
 	}

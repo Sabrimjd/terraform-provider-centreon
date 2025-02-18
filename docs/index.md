@@ -33,3 +33,7 @@ provider "centreon" {
 - `protocol` (String) Protocol to use for API calls (http or https)
 - `server` (String) Centreon server hostname (eg. 'centreon.example.com')
 
+### Optional
+
+- `generate_and_reload_configuration` (Boolean) When true, automatically generates and reloads the configuration for all monitoring servers after applying changes
+
