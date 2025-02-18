@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"terraform-provider-centreon/internal/client"
+	"terraform-provider-centreon/internal/logging"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -11,13 +12,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ datasource.DataSource = &configurationHostsDataSource{}
+var _ datasource.DataSource = &hostsDataSource{}
 
-func NewConfigurationHostsDataSource() datasource.DataSource {
-	return &configurationHostsDataSource{}
+func NewHostsDataSource() datasource.DataSource {
+	return &hostsDataSource{}
 }
 
-type configurationHostsDataSource struct {
+type hostsDataSource struct {
 	client *client.Client
 }
 
@@ -53,7 +54,7 @@ type hostModel struct {
 	IsActivated            types.Bool            `tfsdk:"is_activated"`
 }
 
-type configurationHostsDataSourceModel struct {
+type hostsDataSourceModel struct {
 	Limit  types.Int64  `tfsdk:"limit"`
 	Page   types.Int64  `tfsdk:"page"`
 	Search searchModel  `tfsdk:"search"`
@@ -61,11 +62,11 @@ type configurationHostsDataSourceModel struct {
 	Id     types.String `tfsdk:"id"`
 }
 
-func (d *configurationHostsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_configuration_hosts"
+func (d *hostsDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_hosts"
 }
 
-func (d *configurationHostsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *hostsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "Searches for Centreon hosts.",
 		Attributes: map[string]schema.Attribute{
@@ -172,8 +173,9 @@ func (d *configurationHostsDataSource) Schema(_ context.Context, _ datasource.Sc
 	}
 }
 
-func (d *configurationHostsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
+		logging.Error(context.Background(), "No provider data available")
 		return
 	}
 
@@ -183,17 +185,22 @@ func (d *configurationHostsDataSource) Configure(_ context.Context, req datasour
 			"Unexpected Data Source Configure Type",
 			"Expected *client.Client, got: nil",
 		)
+		logging.Error(context.Background(), "Invalid provider data type")
 		return
 	}
 
 	d.client = client
+	logging.Debug(context.Background(), "Hosts data source configured successfully")
 }
 
-func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var state configurationHostsDataSourceModel
+func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var state hostsDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		logging.Error(ctx, "Failed to get configuration", map[string]interface{}{
+			"error": resp.Diagnostics.Errors(),
+		})
 		return
 	}
 
@@ -203,7 +210,16 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
 			state.Search.Name.ValueString(),
 			state.Search.Value.ValueString())
+		logging.Debug(ctx, "Using search query", map[string]interface{}{
+			"query": searchQuery,
+		})
 	}
+
+	logging.Info(ctx, "Fetching hosts", map[string]interface{}{
+		"limit":  state.Limit.ValueInt64(),
+		"page":   state.Page.ValueInt64(),
+		"search": searchQuery,
+	})
 
 	hostResponse, err := d.client.GetHosts(
 		int(state.Limit.ValueInt64()),
@@ -215,8 +231,15 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 			"Unable to Read Hosts",
 			err.Error(),
 		)
+		logging.Error(ctx, "Failed to fetch hosts", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return
 	}
+
+	logging.Debug(ctx, "Successfully retrieved hosts", map[string]interface{}{
+		"count": len(hostResponse.Result),
+	})
 
 	// Map response to model
 	state.Hosts = make([]hostModel, len(hostResponse.Result))
@@ -264,7 +287,7 @@ func (d *configurationHostsDataSource) Read(ctx context.Context, req datasource.
 		}
 	}
 
-	state.Id = types.StringValue("configuration_hosts")
+	state.Id = types.StringValue("hosts")
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

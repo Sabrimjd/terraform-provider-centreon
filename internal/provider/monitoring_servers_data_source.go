@@ -21,9 +21,9 @@ type monitoringServersDataSource struct {
 }
 
 type monitoringServerDetail struct {
-	ID                        types.Int64  `tfsdk:"id"`
-	Name                      types.String `tfsdk:"name"`
-	Address                   types.String `tfsdk:"address"`
+	ID                       types.Int64  `tfsdk:"id"`
+	Name                     types.String `tfsdk:"name"`
+	Address                  types.String `tfsdk:"address"`
 	IsLocalhost              types.Bool   `tfsdk:"is_localhost"`
 	IsDefault                types.Bool   `tfsdk:"is_default"`
 	SSHPort                  types.Int64  `tfsdk:"ssh_port"`
@@ -33,18 +33,18 @@ type monitoringServerDetail struct {
 	EngineRestartCommand     types.String `tfsdk:"engine_restart_command"`
 	EngineReloadCommand      types.String `tfsdk:"engine_reload_command"`
 	NagiosBin                types.String `tfsdk:"nagios_bin"`
-	NagiostatsBin           types.String `tfsdk:"nagiostats_bin"`
-	BrokerReloadCommand     types.String `tfsdk:"broker_reload_command"`
-	CentreonBrokerCfgPath   types.String `tfsdk:"centreonbroker_cfg_path"`
+	NagiostatsBin            types.String `tfsdk:"nagiostats_bin"`
+	BrokerReloadCommand      types.String `tfsdk:"broker_reload_command"`
+	CentreonBrokerCfgPath    types.String `tfsdk:"centreonbroker_cfg_path"`
 	CentreonBrokerModulePath types.String `tfsdk:"centreonbroker_module_path"`
-	CentreonBrokerLogsPath  types.String `tfsdk:"centreonbroker_logs_path"`
-	CentreonConnectorPath   types.String `tfsdk:"centreonconnector_path"`
-	InitScriptCentreontrapd types.String `tfsdk:"init_script_centreontrapd"`
-	SnmpTrapdPathConf       types.String `tfsdk:"snmp_trapd_path_conf"`
-	RemoteID                types.Int64  `tfsdk:"remote_id"`
-	RemoteServerUseAsProxy  types.Bool   `tfsdk:"remote_server_use_as_proxy"`
-	IsUpdated               types.Bool   `tfsdk:"is_updated"`
-	IsActivate              types.Bool   `tfsdk:"is_activate"`
+	CentreonBrokerLogsPath   types.String `tfsdk:"centreonbroker_logs_path"`
+	CentreonConnectorPath    types.String `tfsdk:"centreonconnector_path"`
+	InitScriptCentreontrapd  types.String `tfsdk:"init_script_centreontrapd"`
+	SnmpTrapdPathConf        types.String `tfsdk:"snmp_trapd_path_conf"`
+	RemoteID                 types.Int64  `tfsdk:"remote_id"`
+	RemoteServerUseAsProxy   types.Bool   `tfsdk:"remote_server_use_as_proxy"`
+	IsUpdated                types.Bool   `tfsdk:"is_updated"`
+	IsActivate               types.Bool   `tfsdk:"is_activate"`
 }
 
 type monitoringServersDataSourceModel struct {
@@ -52,7 +52,7 @@ type monitoringServersDataSourceModel struct {
 	Page    types.Int64              `tfsdk:"page"`
 	Search  *searchModel             `tfsdk:"search"`
 	Servers []monitoringServerDetail `tfsdk:"servers"`
-	Id      types.String            `tfsdk:"id"`
+	Id      types.String             `tfsdk:"id"`
 }
 
 func (d *monitoringServersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -271,9 +271,9 @@ func (d *monitoringServersDataSource) Read(ctx context.Context, req datasource.R
 		}
 
 		state.Servers[i] = monitoringServerDetail{
-			ID:                        types.Int64Value(int64(server.ID)),
-			Name:                      types.StringValue(server.Name),
-			Address:                   types.StringValue(server.Address),
+			ID:                       types.Int64Value(int64(server.ID)),
+			Name:                     types.StringValue(server.Name),
+			Address:                  types.StringValue(server.Address),
 			IsLocalhost:              types.BoolValue(server.IsLocalhost),
 			IsDefault:                types.BoolValue(server.IsDefault),
 			SSHPort:                  types.Int64Value(int64(server.SSHPort)),
@@ -283,18 +283,18 @@ func (d *monitoringServersDataSource) Read(ctx context.Context, req datasource.R
 			EngineRestartCommand:     types.StringValue(server.EngineRestartCommand),
 			EngineReloadCommand:      types.StringValue(server.EngineReloadCommand),
 			NagiosBin:                types.StringValue(server.NagiosBin),
-			NagiostatsBin:           types.StringValue(server.NagiostatsBin),
-			BrokerReloadCommand:     types.StringValue(server.BrokerReloadCommand),
-			CentreonBrokerCfgPath:   types.StringValue(server.CentreonBrokerCfgPath),
+			NagiostatsBin:            types.StringValue(server.NagiostatsBin),
+			BrokerReloadCommand:      types.StringValue(server.BrokerReloadCommand),
+			CentreonBrokerCfgPath:    types.StringValue(server.CentreonBrokerCfgPath),
 			CentreonBrokerModulePath: types.StringValue(server.CentreonBrokerModulePath),
-			CentreonBrokerLogsPath:  centreonBrokerLogsPath,
-			CentreonConnectorPath:   types.StringValue(server.CentreonConnectorPath),
-			InitScriptCentreontrapd: types.StringValue(server.InitScriptCentreontrapd),
-			SnmpTrapdPathConf:       types.StringValue(server.SnmpTrapdPathConf),
-			RemoteID:                remoteID,
-			RemoteServerUseAsProxy:  types.BoolValue(server.RemoteServerUseAsProxy),
-			IsUpdated:               types.BoolValue(server.IsUpdated),
-			IsActivate:              types.BoolValue(server.IsActivate),
+			CentreonBrokerLogsPath:   centreonBrokerLogsPath,
+			CentreonConnectorPath:    types.StringValue(server.CentreonConnectorPath),
+			InitScriptCentreontrapd:  types.StringValue(server.InitScriptCentreontrapd),
+			SnmpTrapdPathConf:        types.StringValue(server.SnmpTrapdPathConf),
+			RemoteID:                 remoteID,
+			RemoteServerUseAsProxy:   types.BoolValue(server.RemoteServerUseAsProxy),
+			IsUpdated:                types.BoolValue(server.IsUpdated),
+			IsActivate:               types.BoolValue(server.IsActivate),
 		}
 	}
 

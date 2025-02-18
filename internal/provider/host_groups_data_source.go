@@ -26,9 +26,9 @@ type hostGroupDetail struct {
 }
 
 type hostGroupsDataSourceModel struct {
-	Limit  types.Int64        `tfsdk:"limit"`
-	Page   types.Int64        `tfsdk:"page"`
-	Search *searchModel       `tfsdk:"search"`
+	Limit  types.Int64       `tfsdk:"limit"`
+	Page   types.Int64       `tfsdk:"page"`
+	Search *searchModel      `tfsdk:"search"`
 	Groups []hostGroupDetail `tfsdk:"groups"`
 	Id     types.String      `tfsdk:"id"`
 }

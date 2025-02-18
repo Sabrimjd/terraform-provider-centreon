@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"terraform-provider-centreon/internal/client"
 
+	"terraform-provider-centreon/internal/validation"
+
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
-
-	//"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -96,6 +97,9 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"address": schema.StringAttribute{
 				Required:    true,
 				Description: "IP or domain of the host",
+				Validators: []validator.String{
+					validation.HostnameOrIPValidator{},
+				},
 			},
 			"alias": schema.StringAttribute{
 				Optional:    true,
@@ -104,10 +108,28 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"snmp_community": schema.StringAttribute{
 				Optional:    true,
 				Description: "Community of the SNMP agent",
+				Sensitive:   true,
 			},
 			"snmp_version": schema.StringAttribute{
 				Optional:    true,
 				Description: "Version of the SNMP agent (1, 2c, or 3)",
+				Validators: []validator.String{
+					validation.SNMPVersionValidator{},
+				},
+			},
+			"geo_coords": schema.StringAttribute{
+				Optional:    true,
+				Description: "Geographic coordinates of the host (format: latitude,longitude)",
+				Validators: []validator.String{
+					validation.GeoCoordsValidator{},
+				},
+			},
+			"notification_options": schema.Int64Attribute{
+				Optional:    true,
+				Description: "Notification options (sum of: 1=DOWN, 2=UNREACHABLE, 4=RECOVERY, 8=FLAPPING, 16=DOWNTIME_SCHEDULED)",
+				Validators: []validator.Int64{
+					validation.NotificationOptionsValidator{},
+				},
 			},
 			"timezone_id": schema.Int64Attribute{
 				Optional:    true,
@@ -159,10 +181,6 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Computed:    true,
 				Description: "Whether notifications are enabled (0=disabled, 1=enabled)",
 				Default:     int64default.StaticInt64(0),
-			},
-			"notification_options": schema.Int64Attribute{
-				Optional:    true,
-				Description: "Notification options (sum of: 1=DOWN, 2=UNREACHABLE, 4=RECOVERY, 8=FLAPPING, 16=DOWNTIME_SCHEDULED)",
 			},
 			"notification_interval": schema.Int64Attribute{
 				Optional:    true,
@@ -286,10 +304,6 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					},
 				},
 			},
-			"geo_coords": schema.StringAttribute{
-				Optional:    true,
-				Description: "Geographic coordinates of the host",
-			},
 			"is_activated": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
@@ -315,6 +329,16 @@ func (r *hostResource) Configure(_ context.Context, req resource.ConfigureReques
 	}
 
 	r.client = client
+}
+
+// Helper function to handle configuration reload if enabled.
+func (r *hostResource) handleConfigurationReload() error {
+	if r.client.GenerateAndReloadConfiguration {
+		if err := r.client.ReloadConfiguration(); err != nil {
+			return fmt.Errorf("failed to generate and reload configuration: %v", err)
+		}
+	}
+	return nil
 }
 
 func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -532,6 +556,15 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 		resp.Diagnostics.AddError(
 			"Error creating host",
 			fmt.Sprintf("Could not create host: %v", err),
+		)
+		return
+	}
+
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after creating host",
+			err.Error(),
 		)
 		return
 	}
@@ -877,6 +910,15 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after updating host",
+			err.Error(),
+		)
+		return
+	}
+
 	// Update state with plan
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
@@ -893,6 +935,15 @@ func (r *hostResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError(
 			"Error deleting host",
 			fmt.Sprintf("Could not delete host %s: %v", state.Name.ValueString(), err),
+		)
+		return
+	}
+
+	// Generate and reload configuration if enabled
+	if err := r.handleConfigurationReload(); err != nil {
+		resp.Diagnostics.AddError(
+			"Error after deleting host",
+			err.Error(),
 		)
 		return
 	}
