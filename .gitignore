@@ -36,3 +36,4 @@ website/vendor
 
 
 examples/Test/main.tf
+centreon_openapi/*

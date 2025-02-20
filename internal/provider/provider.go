@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"terraform-provider-centreon/internal/client"
+	"terraform-provider-centreon/internal/logging"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -34,11 +35,12 @@ type centreonProvider struct {
 }
 
 type centreonProviderModel struct {
-	Protocol   types.String `tfsdk:"protocol"`
-	Server     types.String `tfsdk:"server"`
-	Port       types.String `tfsdk:"port"`
-	APIVersion types.String `tfsdk:"api_version"`
-	APIKey     types.String `tfsdk:"api_key"`
+	Protocol                       types.String `tfsdk:"protocol"`
+	Server                         types.String `tfsdk:"server"`
+	Port                           types.String `tfsdk:"port"`
+	APIVersion                     types.String `tfsdk:"api_version"`
+	APIKey                         types.String `tfsdk:"api_key"`
+	GenerateAndReloadConfiguration types.Bool   `tfsdk:"generate_and_reload_configuration"`
 }
 
 // Metadata returns the provider type name.
@@ -72,12 +74,29 @@ func (p *centreonProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 				Sensitive:   true,
 				Description: "API key for authentication",
 			},
+			"generate_and_reload_configuration": schema.BoolAttribute{
+				Optional:    true,
+				Description: "When true, automatically generates and reloads the configuration for all monitoring servers after applying changes",
+			},
 		},
 	}
 }
 
 // Configure prepares a Centreon API client for data sources and resources.
 func (p *centreonProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	// Initialize file logger
+	logCtx, err := logging.InitializeFileLogger(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to setup logging",
+			err.Error(),
+		)
+		return
+	}
+
+	// Use the logging context for the rest of the configuration
+	ctx = logCtx
+
 	var config centreonProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
@@ -93,6 +112,14 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
+	logging.Info(ctx, "Configuring Centreon client",
+		map[string]interface{}{
+			"server":      config.Server.ValueString(),
+			"protocol":    config.Protocol.ValueString(),
+			"port":        config.Port.ValueString(),
+			"api_version": config.APIVersion.ValueString(),
+		})
+
 	client := client.NewClient(
 		config.Protocol.ValueString(),
 		config.Server.ValueString(),
@@ -100,6 +127,7 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 		config.APIVersion.ValueString(),
 		config.APIKey.ValueString(),
 	)
+	client.GenerateAndReloadConfiguration = !config.GenerateAndReloadConfiguration.IsNull() && config.GenerateAndReloadConfiguration.ValueBool()
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
@@ -109,7 +137,7 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 func (p *centreonProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewPlatformInfoDataSource,
-		NewConfigurationHostsDataSource,
+		NewHostsDataSource,
 		NewMonitoringServersDataSource,
 		NewHostGroupsDataSource,
 		NewHostTemplatesDataSource,
