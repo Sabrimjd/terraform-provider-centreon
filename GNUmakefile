@@ -24,7 +24,7 @@ testacc:
 # Generate documentation
 .PHONY: docs
 docs:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs --provider-name centreon --rendered-provider-name Centreon
 
 # Run tests
 .PHONY: test

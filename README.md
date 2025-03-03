@@ -48,11 +48,12 @@ terraform {
 }
 
 provider "centreon" {
-  protocol     = "https"
-  server       = "centreon.example.com"
-  port         = "443"
-  api_version  = "latest"
-  api_key      = "your-api-key"
+  protocol                         = "https"
+  server                           = "centreon.example.com"
+  port                             = "443"
+  api_version                      = "latest"
+  api_key                          = "your-api-key"
+  generate_and_reload_configuration = true
 }
 
 # Create a new host
