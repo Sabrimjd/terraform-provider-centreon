@@ -10,4 +10,4 @@ import (
 //go:generate terraform fmt -recursive ../examples/
 
 // Generate documentation.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-dir .. --provider-name centreon --rendered-provider-name Centreon --examples-dir ../examples/
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-dir .. --provider-name centreon --rendered-provider-name Centreon
