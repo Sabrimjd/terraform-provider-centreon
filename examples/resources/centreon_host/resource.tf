@@ -1,20 +1,3 @@
-terraform {
-  required_providers {
-    centreon = {
-      source = "github.com/Sabrimjd/centreon"
-    }
-  }
-  required_version = ">= 1.0.0"
-}
-
-provider "centreon" {
-  protocol    = "https"
-  server      = "centreon.example.com"
-  port        = "443"
-  api_version = "latest"
-  api_key     = "your-api-key"
-}
-
 # Example of creating a basic web server host
 resource "centreon_host" "web_server" {
   monitoring_server_id = 1
