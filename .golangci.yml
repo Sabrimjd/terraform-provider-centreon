@@ -20,7 +20,7 @@ linters:
     - nilerr
     - predeclared
     - staticcheck
-    - usetesting
+    #- usetesting Not available in github ci
     - unconvert
     - unparam
     - unused
