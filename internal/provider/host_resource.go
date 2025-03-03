@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"terraform-provider-centreon/internal/client"
 
+	"terraform-provider-centreon/internal/logging"
 	"terraform-provider-centreon/internal/validation"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -747,6 +748,42 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.Templates[i] = types.Int64Value(int64(tmpl.ID))
 	}
 
+	// Get macros for the host
+	macros, err := r.client.GetHostMacros(host.ID)
+	if err != nil {
+		logging.Warn(ctx, "Error fetching host macros", map[string]interface{}{
+			"host_id": host.ID,
+			"error":   err.Error(),
+		})
+	} else if len(macros) > 0 {
+		state.Macros = make([]macroModel, len(macros))
+		for i, m := range macros {
+			mac := macroModel{
+				Name:       types.StringValue(m.Name),
+				IsPassword: types.BoolValue(m.IsPassword),
+			}
+
+			// According to API docs, if is_password is true and value is null,
+			// the value is considered unchanged. However, for our purposes,
+			// we should retrieve the value if possible
+			if m.Value != nil {
+				mac.Value = types.StringValue(*m.Value)
+			}
+
+			if m.Description != nil {
+				mac.Description = types.StringValue(*m.Description)
+			}
+
+			state.Macros[i] = mac
+		}
+
+		logging.Info(ctx, "Host macros retrieved", map[string]interface{}{
+			"host":   host.Name,
+			"count":  len(macros),
+			"macros": macros,
+		})
+	}
+
 	state.IsActivated = types.BoolValue(host.IsActivated)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -758,6 +795,17 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Get current state to compare
+	var state hostResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	logging.Info(ctx, "Updating host", map[string]interface{}{
+		"host": plan.Name.ValueString(),
+	})
 
 	// Create update request using the same structure as create
 	updateReq := &client.CreateHostRequest{
@@ -807,29 +855,69 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		v := int(plan.RetryCheckInterval.ValueInt64())
 		updateReq.RetryCheckInterval = &v
 	}
-	if !plan.ActiveCheckEnabled.IsNull() && plan.ActiveCheckEnabled.ValueInt64() != 0 {
+	if !plan.ActiveCheckEnabled.IsNull() {
 		v := int(plan.ActiveCheckEnabled.ValueInt64())
 		updateReq.ActiveCheckEnabled = &v
 	}
-	if !plan.PassiveCheckEnabled.IsNull() && plan.PassiveCheckEnabled.ValueInt64() != 0 {
+	if !plan.PassiveCheckEnabled.IsNull() {
 		v := int(plan.PassiveCheckEnabled.ValueInt64())
 		updateReq.PassiveCheckEnabled = &v
 	}
-	if !plan.NotificationEnabled.IsNull() && plan.NotificationEnabled.ValueInt64() != 0 {
+	if !plan.NotificationEnabled.IsNull() {
 		v := int(plan.NotificationEnabled.ValueInt64())
 		updateReq.NotificationEnabled = &v
 	}
-	if !plan.EventHandlerEnabled.IsNull() && plan.EventHandlerEnabled.ValueInt64() != 0 {
-		v := int(plan.EventHandlerEnabled.ValueInt64())
-		updateReq.EventHandlerEnabled = &v
+	if !plan.NotificationOptions.IsNull() {
+		v := int(plan.NotificationOptions.ValueInt64())
+		updateReq.NotificationOptions = &v
 	}
-	if !plan.FlapDetectionEnabled.IsNull() && plan.FlapDetectionEnabled.ValueInt64() != 0 {
+	if !plan.NotificationInterval.IsNull() {
+		v := int(plan.NotificationInterval.ValueInt64())
+		updateReq.NotificationInterval = &v
+	}
+	if !plan.NotificationTimeperiodID.IsNull() {
+		v := int(plan.NotificationTimeperiodID.ValueInt64())
+		updateReq.NotificationTimeperiodID = &v
+	}
+	if !plan.FirstNotificationDelay.IsNull() {
+		v := int(plan.FirstNotificationDelay.ValueInt64())
+		updateReq.FirstNotificationDelay = &v
+	}
+	if !plan.RecoveryNotificationDelay.IsNull() {
+		v := int(plan.RecoveryNotificationDelay.ValueInt64())
+		updateReq.RecoveryNotificationDelay = &v
+	}
+	if !plan.AcknowledgementTimeout.IsNull() {
+		v := int(plan.AcknowledgementTimeout.ValueInt64())
+		updateReq.AcknowledgementTimeout = &v
+	}
+	if !plan.FreshnessChecked.IsNull() {
+		v := int(plan.FreshnessChecked.ValueInt64())
+		updateReq.FreshnessChecked = &v
+	}
+	if !plan.FreshnessThreshold.IsNull() {
+		v := int(plan.FreshnessThreshold.ValueInt64())
+		updateReq.FreshnessThreshold = &v
+	}
+	if !plan.FlapDetectionEnabled.IsNull() {
 		v := int(plan.FlapDetectionEnabled.ValueInt64())
 		updateReq.FlapDetectionEnabled = &v
 	}
-	if !plan.FreshnessChecked.IsNull() && plan.FreshnessChecked.ValueInt64() != 0 {
-		v := int(plan.FreshnessChecked.ValueInt64())
-		updateReq.FreshnessChecked = &v
+	if !plan.LowFlapThreshold.IsNull() {
+		v := int(plan.LowFlapThreshold.ValueInt64())
+		updateReq.LowFlapThreshold = &v
+	}
+	if !plan.HighFlapThreshold.IsNull() {
+		v := int(plan.HighFlapThreshold.ValueInt64())
+		updateReq.HighFlapThreshold = &v
+	}
+	if !plan.EventHandlerEnabled.IsNull() {
+		v := int(plan.EventHandlerEnabled.ValueInt64())
+		updateReq.EventHandlerEnabled = &v
+	}
+	if !plan.EventHandlerCommandID.IsNull() {
+		v := int(plan.EventHandlerCommandID.ValueInt64())
+		updateReq.EventHandlerCommandID = &v
 	}
 
 	// Only include non-empty arrays
@@ -899,6 +987,36 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	if !plan.IsActivated.IsNull() {
 		v := plan.IsActivated.ValueBool()
 		updateReq.IsActivated = &v
+	}
+
+	// Handle macros - always include them in the update to ensure
+	// they are properly updated per the OpenAPI documentation
+	if len(plan.Macros) > 0 {
+		logging.Info(ctx, "Including macros in update", map[string]interface{}{
+			"host":   plan.Name.ValueString(),
+			"macros": len(plan.Macros),
+		})
+
+		updateReq.Macros = make([]client.HostMacro, len(plan.Macros))
+		for i, m := range plan.Macros {
+			macro := client.HostMacro{
+				Name:       m.Name.ValueString(),
+				IsPassword: m.IsPassword.ValueBool(),
+			}
+
+			// Always include the value when updating
+			if !m.Value.IsNull() {
+				v := m.Value.ValueString()
+				macro.Value = &v
+			}
+
+			if !m.Description.IsNull() {
+				v := m.Description.ValueString()
+				macro.Description = &v
+			}
+
+			updateReq.Macros[i] = macro
+		}
 	}
 
 	// Call API to update host
