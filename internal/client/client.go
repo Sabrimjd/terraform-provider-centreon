@@ -474,3 +474,29 @@ func (c *Client) ReloadConfiguration() error {
 
 	return nil
 }
+
+type HostMacroResponse struct {
+	Result []HostMacro `json:"result"`
+}
+
+// GetHostMacros retrieves macros for a given host ID.
+func (c *Client) GetHostMacros(hostID int) ([]HostMacro, error) {
+	url := fmt.Sprintf("%s/configuration/hosts/%d/macros", c.BaseURL, hostID)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request to fetch host macros: %v", err)
+	}
+
+	resp, err := c.doRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var macroResponse HostMacroResponse
+	if err := json.NewDecoder(resp.Body).Decode(&macroResponse); err != nil {
+		return nil, fmt.Errorf("error decoding host macros response: %v", err)
+	}
+
+	return macroResponse.Result, nil
+}

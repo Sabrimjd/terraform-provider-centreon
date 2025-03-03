@@ -4,6 +4,8 @@ This Terraform Provider allows you to interact with Centreon through its API. It
 
 > ⚠️ **Warning**: This provider is in early stages of development and is not ready for production use. Features may be incomplete, and breaking changes can occur without notice. Use it for testing and evaluation purposes only.
 
+You can see the official documentation on the Terraform Provider dedicated webpage here : [https://registry.terraform.io/providers/Sabrimjd/centreon/latest/docs](https://registry.terraform.io/providers/Sabrimjd/centreon/latest/docs)
+
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.0
