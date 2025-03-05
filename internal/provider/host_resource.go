@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"terraform-provider-centreon/internal/client"
-
 	"terraform-provider-centreon/internal/logging"
 	"terraform-provider-centreon/internal/validation"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -550,6 +550,13 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 			createReq.Macros[i] = macro
 		}
 	}
+
+	logging.Info(ctx, "Creating host", map[string]interface{}{
+		"name": createReq.Name,
+	})
+
+	// Add a 1 second delay before creating the host
+	time.Sleep(1 * time.Second)
 
 	// Create the host
 	err := r.client.CreateHost(createReq)

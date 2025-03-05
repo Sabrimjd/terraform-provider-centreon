@@ -247,17 +247,40 @@ func NewClient(protocol, server, port, apiVersion, apiKey string) *Client {
 }
 
 func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
+	// Add logging before making the request
+	logging.Info(req.Context(), "Making API request", map[string]interface{}{
+		"method": req.Method,
+		"url":    req.URL.String(),
+	})
+
 	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
+		logging.Error(req.Context(), "API request failed", map[string]interface{}{
+			"method": req.Method,
+			"url":    req.URL.String(),
+			"error":  err.Error(),
+		})
 		return nil, fmt.Errorf("error making request: %v", err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		logging.Error(req.Context(), "API request returned error status", map[string]interface{}{
+			"method":     req.Method,
+			"url":        req.URL.String(),
+			"statusCode": resp.StatusCode,
+			"body":       string(body),
+		})
 		return nil, HandleAPIError(resp, body)
 	}
+
+	logging.Info(req.Context(), "API request completed successfully", map[string]interface{}{
+		"method":     req.Method,
+		"url":        req.URL.String(),
+		"statusCode": resp.StatusCode,
+	})
 
 	return resp, nil
 }
