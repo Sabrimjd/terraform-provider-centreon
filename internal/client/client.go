@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"terraform-provider-centreon/internal/logging"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 type Client struct {
@@ -247,40 +249,67 @@ func NewClient(protocol, server, port, apiVersion, apiKey string) *Client {
 }
 
 func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
-	// Add logging before making the request
-	logging.Info(req.Context(), "Making API request", map[string]interface{}{
-		"method": req.Method,
-		"url":    req.URL.String(),
+	ctx := req.Context()
+	var reqBody []byte
+	if req.Body != nil {
+		// Read request body for logging
+		reqBody, _ = io.ReadAll(req.Body)
+		// Reset the body for the actual request
+		req.Body = io.NopCloser(bytes.NewBuffer(reqBody))
+	}
+
+	// Always log request details at ERROR level to ensure visibility
+	tflog.Error(ctx, "API Request", map[string]interface{}{
+		"method":  req.Method,
+		"url":     req.URL.String(),
+		"headers": req.Header,
+		"body":    string(reqBody),
 	})
 
+	// Set auth header
 	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
+
+	// Execute the API request
+	startTime := time.Now()
 	resp, err := c.HTTPClient.Do(req)
+	duration := time.Since(startTime)
+
 	if err != nil {
-		logging.Error(req.Context(), "API request failed", map[string]interface{}{
-			"method": req.Method,
-			"url":    req.URL.String(),
-			"error":  err.Error(),
+		tflog.Error(ctx, "API request failed", map[string]interface{}{
+			"method":   req.Method,
+			"url":      req.URL.String(),
+			"duration": duration.String(),
+			"error":    err.Error(),
 		})
 		return nil, fmt.Errorf("error making request: %v", err)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		logging.Error(req.Context(), "API request returned error status", map[string]interface{}{
-			"method":     req.Method,
-			"url":        req.URL.String(),
-			"statusCode": resp.StatusCode,
-			"body":       string(body),
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		tflog.Error(ctx, "Error reading response body", map[string]interface{}{
+			"error": err.Error(),
 		})
-		return nil, HandleAPIError(resp, body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 
-	logging.Info(req.Context(), "API request completed successfully", map[string]interface{}{
+	// Replace body for subsequent readers
+	resp.Body.Close()
+	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+
+	// Always log response details at ERROR level to ensure visibility
+	tflog.Error(ctx, "API Response", map[string]interface{}{
 		"method":     req.Method,
 		"url":        req.URL.String(),
 		"statusCode": resp.StatusCode,
+		"duration":   duration.String(),
+		"body":       string(respBody),
 	})
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, HandleAPIError(resp, respBody)
+	}
 
 	return resp, nil
 }
@@ -325,48 +354,86 @@ func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, er
 	return &hostResponse, nil
 }
 
-func (c *Client) CreateHost(host *CreateHostRequest) error {
+// Modified to return the host ID.
+func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, error) {
 	url := fmt.Sprintf("%s/configuration/hosts", c.BaseURL)
 	jsonData, err := json.Marshal(host)
 	if err != nil {
-		return fmt.Errorf("error marshaling host data: %v", err)
+		tflog.Error(ctx, "Error marshaling host data", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return 0, fmt.Errorf("error marshaling host data: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	tflog.Error(ctx, "Creating host - Request data", map[string]interface{}{
+		"url":  url,
+		"data": string(jsonData),
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		tflog.Error(ctx, "Error creating request", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return 0, fmt.Errorf("error creating request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.doRequest(req)
 	if err != nil {
-		return err
+		tflog.Error(ctx, "Host creation failed", map[string]interface{}{
+			"name":  host.Name,
+			"error": err.Error(),
+		})
+		return 0, err
 	}
-	resp.Body.Close()
-	return nil
-}
+	defer resp.Body.Close()
 
-func (c *Client) UpdateHost(host *CreateHostRequest) error {
+	// Now we need to get the ID of the newly created host
+	// Wait a short time to ensure the host is available in the API
+	time.Sleep(500 * time.Millisecond)
+
 	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", host.Name))
 	if err != nil {
-		return fmt.Errorf("error getting host ID: %v", err)
+		tflog.Error(ctx, "Error getting ID for newly created host", map[string]interface{}{
+			"name":  host.Name,
+			"error": err.Error(),
+		})
+		return 0, fmt.Errorf("host was created but error getting its ID: %v", err)
 	}
+
 	if len(hosts.Result) == 0 {
-		return &APIError{
-			StatusCode: http.StatusNotFound,
-			Message:    fmt.Sprintf("Host not found: %s", host.Name),
-			Code:       "NOT_FOUND",
-		}
+		tflog.Error(ctx, "Host created but not found on lookup", map[string]interface{}{
+			"name": host.Name,
+		})
+		return 0, fmt.Errorf("host was created but could not retrieve its ID")
 	}
 
 	hostID := hosts.Result[0].ID
+	tflog.Error(ctx, "Host created successfully with ID", map[string]interface{}{
+		"name": host.Name,
+		"id":   hostID,
+	})
+
+	return hostID, nil
+}
+
+// UpdateHost updates a host by ID.
+func (c *Client) UpdateHost(ctx context.Context, hostID int, host *CreateHostRequest) error {
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
+
+	tflog.Error(ctx, "Updating host", map[string]interface{}{
+		"name": host.Name,
+		"id":   hostID,
+		"url":  url,
+	})
+
 	jsonData, err := json.Marshal(host)
 	if err != nil {
 		return fmt.Errorf("error marshaling host data: %v", err)
 	}
 
-	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)
 	}
@@ -374,37 +441,51 @@ func (c *Client) UpdateHost(host *CreateHostRequest) error {
 
 	resp, err := c.doRequest(req)
 	if err != nil {
+		tflog.Error(ctx, "Error updating host", map[string]interface{}{
+			"host_id": hostID,
+			"name":    host.Name,
+			"error":   err.Error(),
+		})
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	tflog.Error(ctx, "Host updated successfully", map[string]interface{}{
+		"host_id": hostID,
+		"name":    host.Name,
+	})
+
 	return nil
 }
 
-func (c *Client) DeleteHost(name string) error {
-	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", name))
-	if err != nil {
-		return fmt.Errorf("error getting host ID: %v", err)
-	}
-	if len(hosts.Result) == 0 {
-		return &APIError{
-			StatusCode: http.StatusNotFound,
-			Message:    fmt.Sprintf("Host not found: %s", name),
-			Code:       "NOT_FOUND",
-		}
-	}
-
-	hostID := hosts.Result[0].ID
+// DeleteHost deletes a host by ID.
+func (c *Client) DeleteHost(ctx context.Context, hostID int) error {
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
-	req, err := http.NewRequest("DELETE", url, nil)
+
+	tflog.Error(ctx, "Deleting host", map[string]interface{}{
+		"id":  hostID,
+		"url": url,
+	})
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)
 	}
 
 	resp, err := c.doRequest(req)
 	if err != nil {
+		tflog.Error(ctx, "Error deleting host", map[string]interface{}{
+			"host_id": hostID,
+			"error":   err.Error(),
+		})
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	tflog.Error(ctx, "Host deleted successfully", map[string]interface{}{
+		"host_id": hostID,
+	})
+
 	return nil
 }
 
@@ -479,7 +560,7 @@ func (c *Client) ReloadConfiguration() error {
 		return fmt.Errorf("error creating request: %v", err)
 	}
 
-	logging.Info(context.Background(), "Reloading configuration",
+	tflog.Error(context.Background(), "Reloading configuration",
 		map[string]interface{}{
 			"url": url,
 		})
@@ -490,7 +571,7 @@ func (c *Client) ReloadConfiguration() error {
 	}
 	defer resp.Body.Close()
 
-	logging.Info(context.Background(), "Configuration reload response",
+	tflog.Error(context.Background(), "Configuration reload response",
 		map[string]interface{}{
 			"status_code": resp.StatusCode,
 		})

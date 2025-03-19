@@ -17,6 +17,9 @@ func InitializeFileLogger(ctx context.Context) (context.Context, error) {
 		logFilePath = "terraform-provider-centreon.log"
 	}
 
+	// Output initialization message to stderr for debugging
+	fmt.Fprintf(os.Stderr, "Initializing Centreon provider logging to %s\n", logFilePath)
+
 	// Ensure the directory exists.
 	if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err != nil {
 		return ctx, fmt.Errorf("failed to create log directory: %v", err)
@@ -27,6 +30,9 @@ func InitializeFileLogger(ctx context.Context) (context.Context, error) {
 
 	// Add provider metadata to all log entries.
 	ctx = tflog.SetField(ctx, "provider", "centreon")
+
+	// Add initial test message at ERROR level to verify logging is working
+	tflog.Error(ctx, "***** CENTREON PROVIDER LOGGING INITIALIZED - THIS IS A TEST ERROR MESSAGE *****")
 
 	return ctx, nil
 }

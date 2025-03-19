@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"terraform-provider-centreon/internal/client"
-	"terraform-provider-centreon/internal/logging"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ datasource.DataSource = &hostsDataSource{}
@@ -175,7 +175,7 @@ func (d *hostsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 
 func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
-		logging.Error(context.Background(), "No provider data available")
+		tflog.Error(context.Background(), "No provider data available")
 		return
 	}
 
@@ -185,12 +185,12 @@ func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureR
 			"Unexpected Data Source Configure Type",
 			"Expected *client.Client, got: nil",
 		)
-		logging.Error(context.Background(), "Invalid provider data type")
+		tflog.Error(context.Background(), "Invalid provider data type")
 		return
 	}
 
 	d.client = client
-	logging.Debug(context.Background(), "Hosts data source configured successfully")
+	tflog.Error(context.Background(), "Hosts data source configured successfully")
 }
 
 func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -198,7 +198,7 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
-		logging.Error(ctx, "Failed to get configuration", map[string]interface{}{
+		tflog.Error(ctx, "Failed to get configuration", map[string]interface{}{
 			"error": resp.Diagnostics.Errors(),
 		})
 		return
@@ -210,12 +210,12 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
 			state.Search.Name.ValueString(),
 			state.Search.Value.ValueString())
-		logging.Debug(ctx, "Using search query", map[string]interface{}{
+		tflog.Error(ctx, "Using search query", map[string]interface{}{
 			"query": searchQuery,
 		})
 	}
 
-	logging.Info(ctx, "Fetching hosts", map[string]interface{}{
+	tflog.Error(ctx, "Fetching hosts", map[string]interface{}{
 		"limit":  state.Limit.ValueInt64(),
 		"page":   state.Page.ValueInt64(),
 		"search": searchQuery,
@@ -231,13 +231,13 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 			"Unable to Read Hosts",
 			err.Error(),
 		)
-		logging.Error(ctx, "Failed to fetch hosts", map[string]interface{}{
+		tflog.Error(ctx, "Failed to fetch hosts", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return
 	}
 
-	logging.Debug(ctx, "Successfully retrieved hosts", map[string]interface{}{
+	tflog.Error(ctx, "Successfully retrieved hosts", map[string]interface{}{
 		"count": len(hostResponse.Result),
 	})
 

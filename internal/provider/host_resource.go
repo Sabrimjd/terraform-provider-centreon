@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"terraform-provider-centreon/internal/client"
-	"terraform-provider-centreon/internal/logging"
 	"terraform-provider-centreon/internal/validation"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &hostResource{}
@@ -27,6 +27,7 @@ type hostResource struct {
 }
 
 type hostResourceModel struct {
+	ID                        types.Int64    `tfsdk:"id"` // Added ID field to store the host ID
 	MonitoringServerID        types.Int64    `tfsdk:"monitoring_server_id"`
 	Name                      types.String   `tfsdk:"name"`
 	Address                   types.String   `tfsdk:"address"`
@@ -87,6 +88,10 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	resp.Schema = schema.Schema{
 		Description: "Manages a Centreon host.",
 		Attributes: map[string]schema.Attribute{
+			"id": schema.Int64Attribute{
+				Computed:    true,
+				Description: "Host ID (internal identifier)",
+			},
 			"monitoring_server_id": schema.Int64Attribute{
 				Required:    true,
 				Description: "ID of the host's monitoring server",
@@ -551,15 +556,15 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 		}
 	}
 
-	logging.Info(ctx, "Creating host", map[string]interface{}{
+	tflog.Error(ctx, "Creating host", map[string]interface{}{
 		"name": createReq.Name,
 	})
 
 	// Add a 1 second delay before creating the host
 	time.Sleep(1 * time.Second)
 
-	// Create the host
-	err := r.client.CreateHost(createReq)
+	// Create the host - pass the context to the client.CreateHost method
+	hostID, err := r.client.CreateHost(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating host",
@@ -567,6 +572,14 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 		)
 		return
 	}
+
+	// Store the host ID in the state
+	plan.ID = types.Int64Value(int64(hostID))
+
+	tflog.Error(ctx, "Host created successfully", map[string]interface{}{
+		"name": createReq.Name,
+		"id":   hostID,
+	})
 
 	// Generate and reload configuration if enabled
 	if err := r.handleConfigurationReload(); err != nil {
@@ -604,6 +617,14 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	host := hosts.Result[0]
+
+	// Store the host ID in the state.
+	state.ID = types.Int64Value(int64(host.ID))
+
+	tflog.Error(ctx, "Host found", map[string]interface{}{
+		"name": host.Name,
+		"id":   host.ID,
+	})
 
 	// Update state with values from API, only if they differ from defaults
 	state.Name = types.StringValue(host.Name)
@@ -758,7 +779,7 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	// Get macros for the host
 	macros, err := r.client.GetHostMacros(host.ID)
 	if err != nil {
-		logging.Warn(ctx, "Error fetching host macros", map[string]interface{}{
+		tflog.Error(ctx, "Error fetching host macros", map[string]interface{}{
 			"host_id": host.ID,
 			"error":   err.Error(),
 		})
@@ -784,7 +805,7 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			state.Macros[i] = mac
 		}
 
-		logging.Info(ctx, "Host macros retrieved", map[string]interface{}{
+		tflog.Error(ctx, "Host macros retrieved", map[string]interface{}{
 			"host":   host.Name,
 			"count":  len(macros),
 			"macros": macros,
@@ -810,8 +831,12 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	logging.Info(ctx, "Updating host", map[string]interface{}{
-		"host": plan.Name.ValueString(),
+	// Use the ID from the state for updating
+	hostID := int(state.ID.ValueInt64())
+
+	tflog.Error(ctx, "Updating host", map[string]interface{}{
+		"name": plan.Name.ValueString(),
+		"id":   hostID,
 	})
 
 	// Create update request using the same structure as create
@@ -999,7 +1024,7 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Handle macros - always include them in the update to ensure
 	// they are properly updated per the OpenAPI documentation
 	if len(plan.Macros) > 0 {
-		logging.Info(ctx, "Including macros in update", map[string]interface{}{
+		tflog.Error(ctx, "Including macros in update", map[string]interface{}{
 			"host":   plan.Name.ValueString(),
 			"macros": len(plan.Macros),
 		})
@@ -1026,14 +1051,17 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
-	// Call API to update host
-	if err := r.client.UpdateHost(updateReq); err != nil {
+	// Call API to update host using the ID directly - pass context to the client.UpdateHost method
+	if err := r.client.UpdateHost(ctx, hostID, updateReq); err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating host",
-			fmt.Sprintf("Could not update host %s: %v", plan.Name.ValueString(), err),
+			fmt.Sprintf("Could not update host %s (ID: %d): %v", plan.Name.ValueString(), hostID, err),
 		)
 		return
 	}
+
+	// Keep the ID from the state in the plan
+	plan.ID = state.ID
 
 	// Generate and reload configuration if enabled
 	if err := r.handleConfigurationReload(); err != nil {
@@ -1055,11 +1083,19 @@ func (r *hostResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	// Delete the host using the client
-	if err := r.client.DeleteHost(state.Name.ValueString()); err != nil {
+	// Use the host ID from state for deletion
+	hostID := int(state.ID.ValueInt64())
+
+	tflog.Error(ctx, "Deleting host", map[string]interface{}{
+		"name": state.Name.ValueString(),
+		"id":   hostID,
+	})
+
+	// Delete the host using the ID directly - pass context to the client.DeleteHost method
+	if err := r.client.DeleteHost(ctx, hostID); err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting host",
-			fmt.Sprintf("Could not delete host %s: %v", state.Name.ValueString(), err),
+			fmt.Sprintf("Could not delete host %s (ID: %d): %v", state.Name.ValueString(), hostID, err),
 		)
 		return
 	}

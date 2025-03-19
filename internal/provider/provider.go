@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -97,6 +98,9 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 	// Use the logging context for the rest of the configuration
 	ctx = logCtx
 
+	// TEST ERROR LOG MESSAGE - This should appear in the logs if logging is working correctly
+	tflog.Error(ctx, "***** LOGGING TEST: If you can see this message, ERROR level logging is working *****")
+
 	var config centreonProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
@@ -112,7 +116,7 @@ func (p *centreonProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	logging.Info(ctx, "Configuring Centreon client",
+	tflog.Error(ctx, "Configuring Centreon client",
 		map[string]interface{}{
 			"server":      config.Server.ValueString(),
 			"protocol":    config.Protocol.ValueString(),

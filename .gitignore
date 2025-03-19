@@ -35,5 +35,7 @@ website/vendor
 *.winfile eol=crlf
 
 
-examples/Test/main.tf
+examples/Test/
 centreon_openapi/*
+.github/copilot-instructions.md
+documentation/
