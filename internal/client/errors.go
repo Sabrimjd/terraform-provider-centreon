@@ -35,6 +35,9 @@ func HandleAPIError(resp *http.Response, body []byte) error {
 	ctx := context.Background()
 	rawMessage := string(body)
 
+	// Pretty-print the error JSON if possible
+	formattedRawMessage := prettyPrintJSON(rawMessage)
+
 	// Try to parse as JSON error
 	var errorResp ErrorResponse
 	message := rawMessage
@@ -46,12 +49,12 @@ func HandleAPIError(resp *http.Response, body []byte) error {
 			"status_code": resp.StatusCode,
 			"error_code":  errorResp.Code,
 			"message":     errorResp.Message,
-			"raw_body":    rawMessage,
+			"raw_body":    formattedRawMessage,
 		})
 	} else {
 		tflog.Error(ctx, "Could not parse API error response as JSON", map[string]interface{}{
 			"status_code": resp.StatusCode,
-			"raw_body":    rawMessage,
+			"raw_body":    formattedRawMessage,
 			"parse_error": err,
 		})
 	}

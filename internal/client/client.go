@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -248,6 +249,35 @@ func NewClient(protocol, server, port, apiVersion, apiKey string) *Client {
 	}
 }
 
+// prettyPrintJSON formats JSON string with indentation if possible
+func prettyPrintJSON(input string) string {
+	// Trim whitespace to make detection more reliable
+	trimmed := strings.TrimSpace(input)
+
+	// Skip empty strings
+	if len(trimmed) == 0 {
+		return input
+	}
+
+	// Check if this looks like JSON
+	if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+		(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+
+		var parsed interface{}
+		err := json.Unmarshal([]byte(trimmed), &parsed)
+		if err == nil {
+			// It's valid JSON, so pretty-print it
+			prettyJSON, err := json.MarshalIndent(parsed, "", "  ")
+			if err == nil {
+				return string(prettyJSON)
+			}
+		}
+	}
+
+	// If not JSON or error formatting, return original
+	return input
+}
+
 func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	var reqBody []byte
@@ -258,12 +288,16 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 		req.Body = io.NopCloser(bytes.NewBuffer(reqBody))
 	}
 
+	// Try to pretty-print JSON for logging
+	bodyStr := string(reqBody)
+	formattedBody := prettyPrintJSON(bodyStr)
+
 	// Always log request details at ERROR level to ensure visibility
 	tflog.Error(ctx, "API Request", map[string]interface{}{
 		"method":  req.Method,
 		"url":     req.URL.String(),
 		"headers": req.Header,
-		"body":    string(reqBody),
+		"body":    formattedBody,
 	})
 
 	// Set auth header
@@ -298,13 +332,17 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 	resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
 
+	// Pretty-print response JSON if possible
+	respBodyStr := string(respBody)
+	formattedRespBody := prettyPrintJSON(respBodyStr)
+
 	// Always log response details at ERROR level to ensure visibility
 	tflog.Error(ctx, "API Response", map[string]interface{}{
 		"method":     req.Method,
 		"url":        req.URL.String(),
 		"statusCode": resp.StatusCode,
 		"duration":   duration.String(),
-		"body":       string(respBody),
+		"body":       formattedRespBody,
 	})
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
