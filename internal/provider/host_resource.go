@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"terraform-provider-centreon/internal/client"
 	"terraform-provider-centreon/internal/validation"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -560,8 +559,8 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 		"name": createReq.Name,
 	})
 
-	// Add a 1 second delay before creating the host
-	time.Sleep(1 * time.Second)
+	// Remove the explicit delay here as it's now handled in the client
+	// time.Sleep(1 * time.Second)
 
 	// Create the host - pass the context to the client.CreateHost method
 	hostID, err := r.client.CreateHost(ctx, createReq)

@@ -8,10 +8,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
+
+// Global mutex for host operations
+var hostMutex sync.Mutex
 
 type Client struct {
 	BaseURL                        string
@@ -394,6 +398,13 @@ func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, er
 
 // Modified to return the host ID.
 func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, error) {
+	// Acquire lock to ensure sequential processing
+	hostMutex.Lock()
+	defer hostMutex.Unlock()
+
+	// Add a delay before creating the host to ensure any previous operations are complete
+	time.Sleep(1 * time.Second)
+
 	url := fmt.Sprintf("%s/configuration/hosts", c.BaseURL)
 	jsonData, err := json.Marshal(host)
 	if err != nil {
@@ -427,9 +438,22 @@ func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, 
 	}
 	defer resp.Body.Close()
 
-	// Now we need to get the ID of the newly created host
+	// Parse the response to get the host ID directly from the creation response if possible
+	var responseData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&responseData); err == nil {
+		if id, ok := responseData["id"].(float64); ok {
+			hostID := int(id)
+			tflog.Error(ctx, "Host created successfully with ID from response", map[string]interface{}{
+				"name": host.Name,
+				"id":   hostID,
+			})
+			return hostID, nil
+		}
+	}
+
+	// If we couldn't get ID from response, fall back to the original method
 	// Wait a short time to ensure the host is available in the API
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(2 * time.Second)
 
 	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", host.Name))
 	if err != nil {
@@ -458,6 +482,12 @@ func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, 
 
 // UpdateHost updates a host by ID.
 func (c *Client) UpdateHost(ctx context.Context, hostID int, host *CreateHostRequest) error {
+	hostMutex.Lock()
+	defer hostMutex.Unlock()
+
+	// Add a delay before updating the host
+	time.Sleep(1 * time.Second)
+
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
 
 	tflog.Error(ctx, "Updating host", map[string]interface{}{
@@ -498,6 +528,12 @@ func (c *Client) UpdateHost(ctx context.Context, hostID int, host *CreateHostReq
 
 // DeleteHost deletes a host by ID.
 func (c *Client) DeleteHost(ctx context.Context, hostID int) error {
+	hostMutex.Lock()
+	defer hostMutex.Unlock()
+
+	// Add a delay before deleting the host
+	time.Sleep(1 * time.Second)
+
 	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
 
 	tflog.Error(ctx, "Deleting host", map[string]interface{}{
