@@ -159,6 +159,10 @@ resource "centreon_host" "db_server" {
 - `templates` (List of Number) List of template IDs
 - `timezone_id` (Number) Timezone ID
 
+### Read-Only
+
+- `id` (Number) Host ID (internal identifier)
+
 <a id="nestedatt--macros"></a>
 ### Nested Schema for `macros`
 
