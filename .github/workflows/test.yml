@@ -49,7 +49,7 @@ jobs:
             go.sum
             go.mod
       # We need the latest version of Terraform for our documentation generation to use
-      - uses: hashicorp/setup-terraform@v3 # v3.1.2
+      - uses: hashicorp/setup-terraform@v4 # v3.1.2
         with:
           terraform_wrapper: false
       - run: make generate
@@ -84,7 +84,7 @@ jobs:
           cache-dependency-path: |
             go.sum
             go.mod
-      - uses: hashicorp/setup-terraform@v3 # v3.1.2
+      - uses: hashicorp/setup-terraform@v4 # v3.1.2
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
