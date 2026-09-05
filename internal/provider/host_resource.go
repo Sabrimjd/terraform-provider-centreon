@@ -2,21 +2,26 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"terraform-provider-centreon/internal/client"
 	"terraform-provider-centreon/internal/validation"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &hostResource{}
+var _ resource.ResourceWithImportState = &hostResource{}
 
 func NewHostResource() resource.Resource {
 	return &hostResource{}
@@ -91,6 +96,9 @@ func (r *hostResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"id": schema.Int64Attribute{
 				Computed:    true,
 				Description: "Host ID (internal identifier)",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"monitoring_server_id": schema.Int64Attribute{
 				Required:    true,
@@ -353,6 +361,25 @@ func (r *hostResource) handleConfigurationReload(ctx context.Context, diags *dia
 	}
 }
 
+// macroNames returns macro names only (never values) for safe logging.
+func macroNames(macros []client.HostMacro) []string {
+	names := make([]string, len(macros))
+	for i, m := range macros {
+		names[i] = m.Name
+	}
+	return names
+}
+
+// hostNameSearchQuery builds an exact-match name search payload via JSON
+// marshalling so special characters in host names cannot break the query.
+func hostNameSearchQuery(name string) string {
+	payload, err := json.Marshal(map[string]string{"name": name})
+	if err != nil {
+		return "{}"
+	}
+	return string(payload)
+}
+
 // planToCreateHostRequest converts a hostResourceModel plan/state into a
 // CreateHostRequest. It is shared by Create and Update so both send identical
 // payloads (previously Update silently dropped icon_id).
@@ -511,15 +538,10 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	// Prefer an ID-based lookup; fall back to name search only when the
-	// state has no usable ID (legacy state files).
-	var hosts *client.HostResponse
-	var err error
-	if !state.ID.IsNull() && state.ID.ValueInt64() != 0 {
-		hosts, err = r.client.GetHosts(ctx, 1, 1, fmt.Sprintf(`{"name":"%s"}`, state.Name.ValueString()))
-	} else {
-		hosts, err = r.client.GetHosts(ctx, 1, 1, fmt.Sprintf(`{"name":"%s"}`, state.Name.ValueString()))
-	}
+	// Look up the host by name (exact match in the Centreon API). The state
+	// also carries the numeric ID; it is kept for update/delete calls and
+	// refreshed below from the API response.
+	hosts, err := r.client.GetHosts(ctx, 1, 1, hostNameSearchQuery(state.Name.ValueString()))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading host",
@@ -633,13 +655,20 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	// Enabled/checked fields: 2 means "inherit from template" in the API.
-	// The schema only exposes 0/1, so map 2 -> 0 to keep state stable.
-	state.ActiveCheckEnabled = types.Int64Value(int64(min(host.ActiveCheckEnabled, 1)))
-	state.PassiveCheckEnabled = types.Int64Value(int64(min(host.PassiveCheckEnabled, 1)))
-	state.NotificationEnabled = types.Int64Value(int64(min(host.NotificationEnabled, 1)))
-	state.EventHandlerEnabled = types.Int64Value(int64(min(host.EventHandlerEnabled, 1)))
-	state.FlapDetectionEnabled = types.Int64Value(int64(min(host.FlapDetectionEnabled, 1)))
-	state.FreshnessChecked = types.Int64Value(int64(min(host.FreshnessChecked, 1)))
+	// The schema only exposes 0/1, so map 2 -> 0 (unset) to keep state
+	// aligned with the schema default. 0 and 1 pass through unchanged.
+	normalizeEnabled := func(v int) int64 {
+		if v == 2 {
+			return 0
+		}
+		return int64(v)
+	}
+	state.ActiveCheckEnabled = types.Int64Value(normalizeEnabled(host.ActiveCheckEnabled))
+	state.PassiveCheckEnabled = types.Int64Value(normalizeEnabled(host.PassiveCheckEnabled))
+	state.NotificationEnabled = types.Int64Value(normalizeEnabled(host.NotificationEnabled))
+	state.EventHandlerEnabled = types.Int64Value(normalizeEnabled(host.EventHandlerEnabled))
+	state.FlapDetectionEnabled = types.Int64Value(normalizeEnabled(host.FlapDetectionEnabled))
+	state.FreshnessChecked = types.Int64Value(normalizeEnabled(host.FreshnessChecked))
 
 	// Only set arrays if not empty
 	if len(host.CheckCommandArgs) > 0 {
@@ -685,17 +714,19 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.Templates = nil
 	}
 
-	// Get macros for the host
+	// Get macros for the host. On failure keep the existing state macros
+	// (a silent nil would hide drift) and surface a warning diagnostic.
 	macros, err := r.client.GetHostMacros(ctx, host.ID)
 	if err != nil {
-		tflog.Warn(ctx, "Error fetching host macros", map[string]interface{}{
+		tflog.Warn(ctx, "Error fetching host macros; keeping previous macro state", map[string]interface{}{
 			"host_id": host.ID,
 			"error":   err.Error(),
 		})
-	} else {
-		state.Macros = nil
-	}
-	if len(macros) > 0 {
+		resp.Diagnostics.AddWarning(
+			"Unable to read host macros",
+			fmt.Sprintf("Host %s: could not read macros from Centreon; macro state was not refreshed: %v", host.Name, err),
+		)
+	} else if len(macros) > 0 {
 		state.Macros = make([]macroModel, len(macros))
 		for i, m := range macros {
 			mac := macroModel{
@@ -718,9 +749,9 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		}
 
 		tflog.Debug(ctx, "Host macros retrieved", map[string]interface{}{
-			"host":   host.Name,
-			"count":  len(macros),
-			"macros": macros,
+			"host":  host.Name,
+			"count": len(macros),
+			"names": macroNames(macros),
 		})
 	}
 
@@ -807,4 +838,17 @@ func (r *hostResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 	// Generate and reload configuration if enabled
 	r.handleConfigurationReload(ctx, &resp.Diagnostics)
+}
+
+// ImportState supports `terraform import` by host name (the API has no
+// single-host GET endpoint, and Read resolves hosts by exact name).
+func (r *hostResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if req.ID == "" {
+		resp.Diagnostics.AddError(
+			"Unexpected Import Identifier",
+			"Expected the Centreon host name as import identifier, got an empty string",
+		)
+		return
+	}
+	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
 }

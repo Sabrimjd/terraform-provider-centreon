@@ -20,6 +20,10 @@ import (
 // never wedge a Terraform apply indefinitely.
 const defaultTimeout = 30 * time.Second
 
+// maxResponseBytes caps response body reads so a misbehaving server or
+// proxy cannot exhaust provider memory.
+const maxResponseBytes = 16 << 20 // 16 MiB
+
 // hostMutex serializes host mutations (create/update/delete). The Centreon
 // API historically rejects concurrent writes to the configuration, so writes
 // are kept sequential — but without artificial delays. Reads stay parallel.
@@ -169,6 +173,7 @@ type Host struct {
 
 type HostResponse struct {
 	Result []Host `json:"result"`
+	Meta   Meta   `json:"meta"`
 }
 
 type CreateHostRequest struct {
@@ -302,7 +307,7 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) (*http.Respon
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	resp.Body.Close()
 	if err != nil {
 		tflog.Warn(ctx, "Error reading Centreon API response body", map[string]interface{}{
@@ -421,8 +426,12 @@ func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, 
 	}
 
 	// Fallback for API versions that do not return the ID: resolve it by
-	// searching for the host name.
-	hosts, err := c.GetHosts(ctx, 1, 1, fmt.Sprintf(`{"name":"%s"}`, host.Name))
+	// searching for the exact host name (JSON-marshalled for safety).
+	nameQuery, err := json.Marshal(map[string]string{"name": host.Name})
+	if err != nil {
+		return 0, fmt.Errorf("host was created but error building ID lookup: %w", err)
+	}
+	hosts, err := c.GetHosts(ctx, 1, 1, string(nameQuery))
 	if err != nil {
 		return 0, fmt.Errorf("host was created but error getting its ID: %w", err)
 	}
@@ -577,6 +586,11 @@ func (c *Client) GetHostMacros(ctx context.Context, hostID int) ([]HostMacro, er
 
 	resp, err := c.doRequest(ctx, req)
 	if err != nil {
+		// Centreon returns 404 for the macros endpoint when the host has
+		// no macros; treat that as an empty macro list.
+		if IsNotFound(err) {
+			return []HostMacro{}, nil
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()

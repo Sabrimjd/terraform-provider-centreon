@@ -191,6 +191,14 @@ func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureR
 }
 
 func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	if d.client == nil {
+		resp.Diagnostics.AddError(
+			"Client not configured",
+			"The provider client was not configured; check the provider block",
+		)
+		return
+	}
+
 	var state hostsDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -201,17 +209,7 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	// Create search JSON
-	searchQuery := "{}"
-	if !state.Search.Name.IsNull() && !state.Search.Value.IsNull() {
-		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
-			state.Search.Name.ValueString(),
-			state.Search.Value.ValueString())
-		tflog.Debug(ctx, "Using search query", map[string]interface{}{
-			"query": searchQuery,
-		})
-	}
-
+	searchQuery := buildSearchQuery(&state.Search)
 	tflog.Debug(ctx, "Fetching hosts", map[string]interface{}{
 		"limit":  state.Limit.ValueInt64(),
 		"page":   state.Page.ValueInt64(),
