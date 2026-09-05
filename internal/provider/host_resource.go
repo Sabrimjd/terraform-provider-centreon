@@ -479,9 +479,6 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Convert the plan model to an API request (shared with Update).
 	createReq := planToCreateHostRequest(&plan)
 
-	// Remove the explicit delay here as it's now handled in the client
-	// time.Sleep(1 * time.Second)
-
 	// Create the host - pass the context to the client.CreateHost method
 	hostID, err := r.client.CreateHost(ctx, createReq)
 	if err != nil {
