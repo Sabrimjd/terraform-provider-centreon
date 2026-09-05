@@ -15,6 +15,12 @@ REFACTOR:
 DOCS:
 - Fixed authenticating guide (correct POST /login payload shape, verified against Centreon 24.10)
 
+DEPENDENCIES:
+- terraform-plugin-framework 1.14.1 -> 1.19.0 (Go 1.25)
+- terraform-plugin-log 0.9 -> 0.10, plugin-go 0.26 -> 0.31 (transitive)
+- terraform-plugin-docs (tools) 0.21 -> 0.25 — page titles now render as "Centreon"
+- golangci-lint v1.60 -> v2.6 (config migrated to v2 schema; CI action v7)
+
 SECOND PASS (independent review):
 - terraform import support for centreon_host (by host name)
 - Read: optional int fields keep null-vs-0 round-trip semantics documented (unconditional writes would reintroduce drift against unset config)
