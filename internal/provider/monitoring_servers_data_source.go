@@ -215,6 +215,14 @@ func (d *monitoringServersDataSource) Configure(_ context.Context, req datasourc
 }
 
 func (d *monitoringServersDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	if d.client == nil {
+		resp.Diagnostics.AddError(
+			"Client not configured",
+			"The provider client was not configured; check the provider block",
+		)
+		return
+	}
+
 	var state monitoringServersDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -222,26 +230,10 @@ func (d *monitoringServersDataSource) Read(ctx context.Context, req datasource.R
 		return
 	}
 
-	// Initialize empty search if not provided
-	if state.Search == nil {
-		state.Search = &searchModel{
-			Name:  types.StringNull(),
-			Value: types.StringNull(),
-		}
-	}
-
-	// Create search JSON
-	searchQuery := "{}"
-	if !state.Search.Name.IsNull() && !state.Search.Value.IsNull() {
-		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
-			state.Search.Name.ValueString(),
-			state.Search.Value.ValueString())
-	}
-
-	serversResponse, err := d.client.GetMonitoringServers(
+	serversResponse, err := d.client.GetMonitoringServers(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
-		searchQuery,
+		buildSearchQuery(state.Search),
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(

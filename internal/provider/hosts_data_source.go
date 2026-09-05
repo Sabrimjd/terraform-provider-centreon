@@ -175,7 +175,6 @@ func (d *hostsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 
 func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
-		tflog.Error(context.Background(), "No provider data available")
 		return
 	}
 
@@ -185,15 +184,21 @@ func (d *hostsDataSource) Configure(_ context.Context, req datasource.ConfigureR
 			"Unexpected Data Source Configure Type",
 			"Expected *client.Client, got: nil",
 		)
-		tflog.Error(context.Background(), "Invalid provider data type")
 		return
 	}
 
 	d.client = client
-	tflog.Error(context.Background(), "Hosts data source configured successfully")
 }
 
 func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	if d.client == nil {
+		resp.Diagnostics.AddError(
+			"Client not configured",
+			"The provider client was not configured; check the provider block",
+		)
+		return
+	}
+
 	var state hostsDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -204,24 +209,14 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	// Create search JSON
-	searchQuery := "{}"
-	if !state.Search.Name.IsNull() && !state.Search.Value.IsNull() {
-		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
-			state.Search.Name.ValueString(),
-			state.Search.Value.ValueString())
-		tflog.Error(ctx, "Using search query", map[string]interface{}{
-			"query": searchQuery,
-		})
-	}
-
-	tflog.Error(ctx, "Fetching hosts", map[string]interface{}{
+	searchQuery := buildSearchQuery(&state.Search)
+	tflog.Debug(ctx, "Fetching hosts", map[string]interface{}{
 		"limit":  state.Limit.ValueInt64(),
 		"page":   state.Page.ValueInt64(),
 		"search": searchQuery,
 	})
 
-	hostResponse, err := d.client.GetHosts(
+	hostResponse, err := d.client.GetHosts(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
 		searchQuery,
@@ -237,7 +232,7 @@ func (d *hostsDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	tflog.Error(ctx, "Successfully retrieved hosts", map[string]interface{}{
+	tflog.Debug(ctx, "Successfully retrieved hosts", map[string]interface{}{
 		"count": len(hostResponse.Result),
 	})
 
