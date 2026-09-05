@@ -310,7 +310,7 @@ func (d *hostTemplatesDataSource) Read(ctx context.Context, req datasource.ReadR
 			state.Search.Value.ValueString())
 	}
 
-	templatesResponse, err := d.client.GetHostTemplates(
+	templatesResponse, err := d.client.GetHostTemplates(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
 		searchQuery,

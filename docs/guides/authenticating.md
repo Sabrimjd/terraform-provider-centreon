@@ -12,17 +12,13 @@ layout: ""
 You can obtain an API key from Centreon using the following curl command:
 
 ```bash
-curl --request POST \
-  --url https://centreon.example.com/centreon/api/v24.10/login \
-  --header 'content-type: application/json' \
+curl --request POST \\
+  --url https://centreon.example.com/centreon/api/latest/login \\
+  --header 'content-type: application/json' \\
   --data '{
-  "security": {
-    "credentials": {
-      "login": "username",
-      "password": "password"
-    }
-  }
-}'
+  "login": "username",
+  "password": "password"
+}
 ```
 
 you can now use this api key in the provider under the api_key parameters.

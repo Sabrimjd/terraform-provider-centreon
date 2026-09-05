@@ -128,7 +128,7 @@ func (d *hostGroupsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			state.Search.Value.ValueString())
 	}
 
-	groupsResponse, err := d.client.GetHostGroups(
+	groupsResponse, err := d.client.GetHostGroups(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
 		searchQuery,

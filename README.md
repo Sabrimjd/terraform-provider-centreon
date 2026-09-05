@@ -15,7 +15,7 @@ You can see the official documentation on the Terraform Provider dedicated webpa
 
 1. Clone the repository
 ```sh
-git clone git@github.com:your-username/terraform-provider-centreon.git
+git clone git@github.com:Sabrimjd/terraform-provider-centreon.git
 ```
 
 2. Enter the repository directory

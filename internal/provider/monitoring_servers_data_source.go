@@ -238,7 +238,7 @@ func (d *monitoringServersDataSource) Read(ctx context.Context, req datasource.R
 			state.Search.Value.ValueString())
 	}
 
-	serversResponse, err := d.client.GetMonitoringServers(
+	serversResponse, err := d.client.GetMonitoringServers(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
 		searchQuery,

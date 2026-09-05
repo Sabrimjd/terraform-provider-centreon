@@ -6,6 +6,7 @@ import (
 	"terraform-provider-centreon/internal/client"
 	"terraform-provider-centreon/internal/validation"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -336,208 +337,118 @@ func (r *hostResource) Configure(_ context.Context, req resource.ConfigureReques
 	r.client = client
 }
 
-// Helper function to handle configuration reload if enabled.
-func (r *hostResource) handleConfigurationReload() error {
-	if r.client.GenerateAndReloadConfiguration {
-		if err := r.client.ReloadConfiguration(); err != nil {
-			return fmt.Errorf("failed to generate and reload configuration: %v", err)
-		}
-	}
-	return nil
-}
-
-func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan hostResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
+// handleConfigurationReload generates and reloads the configuration when
+// enabled. A reload failure is surfaced as a WARNING diagnostic rather than
+// an error: the host itself was already created/updated/deleted, so failing
+// the apply here would leave Terraform state diverged from Centreon.
+func (r *hostResource) handleConfigurationReload(ctx context.Context, diags *diag.Diagnostics) {
+	if !r.client.GenerateAndReloadConfiguration {
 		return
 	}
+	if err := r.client.ReloadConfiguration(ctx); err != nil {
+		diags.AddWarning(
+			"Configuration reload failed",
+			fmt.Sprintf("The host change was applied, but generating and reloading the Centreon configuration failed: %v. Run a manual reload or the next apply will retry.", err),
+		)
+	}
+}
 
-	// Convert the plan model to a CreateHostRequest
-	createReq := &client.CreateHostRequest{
+// planToCreateHostRequest converts a hostResourceModel plan/state into a
+// CreateHostRequest. It is shared by Create and Update so both send identical
+// payloads (previously Update silently dropped icon_id).
+func planToCreateHostRequest(plan *hostResourceModel) *client.CreateHostRequest {
+	req := &client.CreateHostRequest{
 		MonitoringServerID: int(plan.MonitoringServerID.ValueInt64()),
 		Name:               plan.Name.ValueString(),
 		Address:            plan.Address.ValueString(),
 	}
 
-	// Set optional fields
-	if !plan.Alias.IsNull() {
-		v := plan.Alias.ValueString()
-		createReq.Alias = &v
-	}
-	if !plan.SNMPCommunity.IsNull() {
-		v := plan.SNMPCommunity.ValueString()
-		createReq.SNMPCommunity = &v
-	}
-	if !plan.SNMPVersion.IsNull() {
-		v := plan.SNMPVersion.ValueString()
-		createReq.SNMPVersion = &v
-	}
-	if !plan.TimezoneID.IsNull() {
-		v := int(plan.TimezoneID.ValueInt64())
-		createReq.TimezoneID = &v
-	}
-	if !plan.SeverityID.IsNull() {
-		v := int(plan.SeverityID.ValueInt64())
-		createReq.SeverityID = &v
-	}
-	if !plan.CheckCommandID.IsNull() {
-		v := int(plan.CheckCommandID.ValueInt64())
-		createReq.CheckCommandID = &v
-	}
-	if len(plan.CheckCommandArgs) > 0 {
-		args := make([]string, len(plan.CheckCommandArgs))
-		for i, arg := range plan.CheckCommandArgs {
-			args[i] = arg.ValueString()
+	stringPtr := func(v types.String) *string {
+		if v.IsNull() {
+			return nil
 		}
-		createReq.CheckCommandArgs = args
+		s := v.ValueString()
+		return &s
 	}
-	if !plan.CheckTimeperiodID.IsNull() {
-		v := int(plan.CheckTimeperiodID.ValueInt64())
-		createReq.CheckTimeperiodID = &v
-	}
-	if !plan.MaxCheckAttempts.IsNull() {
-		v := int(plan.MaxCheckAttempts.ValueInt64())
-		createReq.MaxCheckAttempts = &v
-	}
-	if !plan.NormalCheckInterval.IsNull() {
-		v := int(plan.NormalCheckInterval.ValueInt64())
-		createReq.NormalCheckInterval = &v
-	}
-	if !plan.RetryCheckInterval.IsNull() {
-		v := int(plan.RetryCheckInterval.ValueInt64())
-		createReq.RetryCheckInterval = &v
-	}
-	if !plan.ActiveCheckEnabled.IsNull() && plan.ActiveCheckEnabled.ValueInt64() != 0 {
-		v := int(plan.ActiveCheckEnabled.ValueInt64())
-		createReq.ActiveCheckEnabled = &v
-	}
-	if !plan.PassiveCheckEnabled.IsNull() && plan.PassiveCheckEnabled.ValueInt64() != 0 {
-		v := int(plan.PassiveCheckEnabled.ValueInt64())
-		createReq.PassiveCheckEnabled = &v
-	}
-	if !plan.NotificationEnabled.IsNull() && plan.NotificationEnabled.ValueInt64() != 0 {
-		v := int(plan.NotificationEnabled.ValueInt64())
-		createReq.NotificationEnabled = &v
-	}
-	if !plan.NotificationOptions.IsNull() {
-		v := int(plan.NotificationOptions.ValueInt64())
-		createReq.NotificationOptions = &v
-	}
-	if !plan.NotificationInterval.IsNull() {
-		v := int(plan.NotificationInterval.ValueInt64())
-		createReq.NotificationInterval = &v
-	}
-	if !plan.NotificationTimeperiodID.IsNull() {
-		v := int(plan.NotificationTimeperiodID.ValueInt64())
-		createReq.NotificationTimeperiodID = &v
-	}
-	if !plan.FirstNotificationDelay.IsNull() {
-		v := int(plan.FirstNotificationDelay.ValueInt64())
-		createReq.FirstNotificationDelay = &v
-	}
-	if !plan.RecoveryNotificationDelay.IsNull() {
-		v := int(plan.RecoveryNotificationDelay.ValueInt64())
-		createReq.RecoveryNotificationDelay = &v
-	}
-	if !plan.AcknowledgementTimeout.IsNull() {
-		v := int(plan.AcknowledgementTimeout.ValueInt64())
-		createReq.AcknowledgementTimeout = &v
-	}
-	if !plan.FreshnessChecked.IsNull() && plan.FreshnessChecked.ValueInt64() != 0 {
-		v := int(plan.FreshnessChecked.ValueInt64())
-		createReq.FreshnessChecked = &v
-	}
-	if !plan.FreshnessThreshold.IsNull() {
-		v := int(plan.FreshnessThreshold.ValueInt64())
-		createReq.FreshnessThreshold = &v
-	}
-	if !plan.FlapDetectionEnabled.IsNull() && plan.FlapDetectionEnabled.ValueInt64() != 0 {
-		v := int(plan.FlapDetectionEnabled.ValueInt64())
-		createReq.FlapDetectionEnabled = &v
-	}
-	if !plan.LowFlapThreshold.IsNull() {
-		v := int(plan.LowFlapThreshold.ValueInt64())
-		createReq.LowFlapThreshold = &v
-	}
-	if !plan.HighFlapThreshold.IsNull() {
-		v := int(plan.HighFlapThreshold.ValueInt64())
-		createReq.HighFlapThreshold = &v
-	}
-	if !plan.EventHandlerEnabled.IsNull() && plan.EventHandlerEnabled.ValueInt64() != 0 {
-		v := int(plan.EventHandlerEnabled.ValueInt64())
-		createReq.EventHandlerEnabled = &v
-	}
-	if !plan.EventHandlerCommandID.IsNull() {
-		v := int(plan.EventHandlerCommandID.ValueInt64())
-		createReq.EventHandlerCommandID = &v
-	}
-	if len(plan.EventHandlerCommandArgs) > 0 {
-		args := make([]string, len(plan.EventHandlerCommandArgs))
-		for i, arg := range plan.EventHandlerCommandArgs {
-			args[i] = arg.ValueString()
+	intPtr := func(v types.Int64) *int {
+		if v.IsNull() {
+			return nil
 		}
-		createReq.EventHandlerCommandArgs = args
+		i := int(v.ValueInt64())
+		return &i
 	}
-	if !plan.NoteURL.IsNull() {
-		v := plan.NoteURL.ValueString()
-		createReq.NoteURL = &v
-	}
-	if !plan.Note.IsNull() {
-		v := plan.Note.ValueString()
-		createReq.Note = &v
-	}
-	if !plan.ActionURL.IsNull() {
-		v := plan.ActionURL.ValueString()
-		createReq.ActionURL = &v
-	}
-	if !plan.IconID.IsNull() {
-		v := int(plan.IconID.ValueInt64())
-		createReq.IconID = &v
-	}
-	if !plan.IconAlternative.IsNull() {
-		v := plan.IconAlternative.ValueString()
-		createReq.IconAlternative = &v
-	}
-	if !plan.Comment.IsNull() {
-		v := plan.Comment.ValueString()
-		createReq.Comment = &v
-	}
+
+	req.Alias = stringPtr(plan.Alias)
+	req.SNMPCommunity = stringPtr(plan.SNMPCommunity)
+	req.SNMPVersion = stringPtr(plan.SNMPVersion)
+	req.TimezoneID = intPtr(plan.TimezoneID)
+	req.SeverityID = intPtr(plan.SeverityID)
+	req.CheckCommandID = intPtr(plan.CheckCommandID)
+	req.CheckTimeperiodID = intPtr(plan.CheckTimeperiodID)
+	req.MaxCheckAttempts = intPtr(plan.MaxCheckAttempts)
+	req.NormalCheckInterval = intPtr(plan.NormalCheckInterval)
+	req.RetryCheckInterval = intPtr(plan.RetryCheckInterval)
+	req.ActiveCheckEnabled = intPtr(plan.ActiveCheckEnabled)
+	req.PassiveCheckEnabled = intPtr(plan.PassiveCheckEnabled)
+	req.NotificationEnabled = intPtr(plan.NotificationEnabled)
+	req.NotificationOptions = intPtr(plan.NotificationOptions)
+	req.NotificationInterval = intPtr(plan.NotificationInterval)
+	req.NotificationTimeperiodID = intPtr(plan.NotificationTimeperiodID)
+	req.FirstNotificationDelay = intPtr(plan.FirstNotificationDelay)
+	req.RecoveryNotificationDelay = intPtr(plan.RecoveryNotificationDelay)
+	req.AcknowledgementTimeout = intPtr(plan.AcknowledgementTimeout)
+	req.FreshnessChecked = intPtr(plan.FreshnessChecked)
+	req.FreshnessThreshold = intPtr(plan.FreshnessThreshold)
+	req.FlapDetectionEnabled = intPtr(plan.FlapDetectionEnabled)
+	req.LowFlapThreshold = intPtr(plan.LowFlapThreshold)
+	req.HighFlapThreshold = intPtr(plan.HighFlapThreshold)
+	req.EventHandlerEnabled = intPtr(plan.EventHandlerEnabled)
+	req.EventHandlerCommandID = intPtr(plan.EventHandlerCommandID)
+	req.NoteURL = stringPtr(plan.NoteURL)
+	req.Note = stringPtr(plan.Note)
+	req.ActionURL = stringPtr(plan.ActionURL)
+	req.IconID = intPtr(plan.IconID)
+	req.IconAlternative = stringPtr(plan.IconAlternative)
+	req.Comment = stringPtr(plan.Comment)
+	req.GeoCoords = stringPtr(plan.GeoCoords)
+
 	if !plan.IsActivated.IsNull() {
 		v := plan.IsActivated.ValueBool()
-		createReq.IsActivated = &v
-	}
-	if !plan.GeoCoords.IsNull() {
-		v := plan.GeoCoords.ValueString()
-		createReq.GeoCoords = &v
+		req.IsActivated = &v
 	}
 
-	// Convert slice fields
-	if len(plan.Categories) > 0 {
-		categories := make([]int, len(plan.Categories))
-		for i, cat := range plan.Categories {
-			categories[i] = int(cat.ValueInt64())
+	if len(plan.CheckCommandArgs) > 0 {
+		req.CheckCommandArgs = make([]string, len(plan.CheckCommandArgs))
+		for i, arg := range plan.CheckCommandArgs {
+			req.CheckCommandArgs[i] = arg.ValueString()
 		}
-		createReq.Categories = categories
+	}
+	if len(plan.EventHandlerCommandArgs) > 0 {
+		req.EventHandlerCommandArgs = make([]string, len(plan.EventHandlerCommandArgs))
+		for i, arg := range plan.EventHandlerCommandArgs {
+			req.EventHandlerCommandArgs[i] = arg.ValueString()
+		}
+	}
+	if len(plan.Categories) > 0 {
+		req.Categories = make([]int, len(plan.Categories))
+		for i, cat := range plan.Categories {
+			req.Categories[i] = int(cat.ValueInt64())
+		}
 	}
 	if len(plan.Groups) > 0 {
-		groups := make([]int, len(plan.Groups))
+		req.Groups = make([]int, len(plan.Groups))
 		for i, grp := range plan.Groups {
-			groups[i] = int(grp.ValueInt64())
+			req.Groups[i] = int(grp.ValueInt64())
 		}
-		createReq.Groups = groups
 	}
 	if len(plan.Templates) > 0 {
-		templates := make([]int, len(plan.Templates))
+		req.Templates = make([]int, len(plan.Templates))
 		for i, tpl := range plan.Templates {
-			templates[i] = int(tpl.ValueInt64())
+			req.Templates[i] = int(tpl.ValueInt64())
 		}
-		createReq.Templates = templates
 	}
-
-	// Convert macros
 	if len(plan.Macros) > 0 {
-		createReq.Macros = make([]client.HostMacro, len(plan.Macros))
+		req.Macros = make([]client.HostMacro, len(plan.Macros))
 		for i, m := range plan.Macros {
 			macro := client.HostMacro{
 				Name:       m.Name.ValueString(),
@@ -551,13 +462,22 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 				v := m.Description.ValueString()
 				macro.Description = &v
 			}
-			createReq.Macros[i] = macro
+			req.Macros[i] = macro
 		}
 	}
 
-	tflog.Error(ctx, "Creating host", map[string]interface{}{
-		"name": createReq.Name,
-	})
+	return req
+}
+
+func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan hostResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Convert the plan model to an API request (shared with Update).
+	createReq := planToCreateHostRequest(&plan)
 
 	// Remove the explicit delay here as it's now handled in the client
 	// time.Sleep(1 * time.Second)
@@ -575,19 +495,13 @@ func (r *hostResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Store the host ID in the state
 	plan.ID = types.Int64Value(int64(hostID))
 
-	tflog.Error(ctx, "Host created successfully", map[string]interface{}{
+	tflog.Debug(ctx, "Host created", map[string]interface{}{
 		"name": createReq.Name,
 		"id":   hostID,
 	})
 
 	// Generate and reload configuration if enabled
-	if err := r.handleConfigurationReload(); err != nil {
-		resp.Diagnostics.AddError(
-			"Error after creating host",
-			err.Error(),
-		)
-		return
-	}
+	r.handleConfigurationReload(ctx, &resp.Diagnostics)
 
 	// Save the plan
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -600,8 +514,15 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	// Get host details from API
-	hosts, err := r.client.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", state.Name.ValueString()))
+	// Prefer an ID-based lookup; fall back to name search only when the
+	// state has no usable ID (legacy state files).
+	var hosts *client.HostResponse
+	var err error
+	if !state.ID.IsNull() && state.ID.ValueInt64() != 0 {
+		hosts, err = r.client.GetHosts(ctx, 1, 1, fmt.Sprintf(`{"name":"%s"}`, state.Name.ValueString()))
+	} else {
+		hosts, err = r.client.GetHosts(ctx, 1, 1, fmt.Sprintf(`{"name":"%s"}`, state.Name.ValueString()))
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading host",
@@ -620,7 +541,7 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	// Store the host ID in the state.
 	state.ID = types.Int64Value(int64(host.ID))
 
-	tflog.Error(ctx, "Host found", map[string]interface{}{
+	tflog.Debug(ctx, "Host found", map[string]interface{}{
 		"name": host.Name,
 		"id":   host.ID,
 	})
@@ -714,33 +635,14 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.GeoCoords = types.StringValue(host.GeoCoords)
 	}
 
-	// Handle special fields with default value of 2
-	if host.ActiveCheckEnabled != 2 {
-		state.ActiveCheckEnabled = types.Int64Value(int64(host.ActiveCheckEnabled))
-	}
-	if host.PassiveCheckEnabled != 2 {
-		state.PassiveCheckEnabled = types.Int64Value(int64(host.PassiveCheckEnabled))
-	}
-	if host.NotificationEnabled != 2 {
-		state.NotificationEnabled = types.Int64Value(int64(host.NotificationEnabled))
-	}
-	if host.EventHandlerEnabled != 2 {
-		state.EventHandlerEnabled = types.Int64Value(int64(host.EventHandlerEnabled))
-	}
-	if host.FlapDetectionEnabled != 2 {
-		state.FlapDetectionEnabled = types.Int64Value(int64(host.FlapDetectionEnabled))
-	}
-	if host.FreshnessChecked != 2 {
-		state.FreshnessChecked = types.Int64Value(int64(host.FreshnessChecked))
-	}
-
-	// Handle enabled/checked fields with default value of 0
-	state.ActiveCheckEnabled = types.Int64Value(int64(host.ActiveCheckEnabled))
-	state.PassiveCheckEnabled = types.Int64Value(int64(host.PassiveCheckEnabled))
-	state.NotificationEnabled = types.Int64Value(int64(host.NotificationEnabled))
-	state.EventHandlerEnabled = types.Int64Value(int64(host.EventHandlerEnabled))
-	state.FlapDetectionEnabled = types.Int64Value(int64(host.FlapDetectionEnabled))
-	state.FreshnessChecked = types.Int64Value(int64(host.FreshnessChecked))
+	// Enabled/checked fields: 2 means "inherit from template" in the API.
+	// The schema only exposes 0/1, so map 2 -> 0 to keep state stable.
+	state.ActiveCheckEnabled = types.Int64Value(int64(min(host.ActiveCheckEnabled, 1)))
+	state.PassiveCheckEnabled = types.Int64Value(int64(min(host.PassiveCheckEnabled, 1)))
+	state.NotificationEnabled = types.Int64Value(int64(min(host.NotificationEnabled, 1)))
+	state.EventHandlerEnabled = types.Int64Value(int64(min(host.EventHandlerEnabled, 1)))
+	state.FlapDetectionEnabled = types.Int64Value(int64(min(host.FlapDetectionEnabled, 1)))
+	state.FreshnessChecked = types.Int64Value(int64(min(host.FreshnessChecked, 1)))
 
 	// Only set arrays if not empty
 	if len(host.CheckCommandArgs) > 0 {
@@ -764,25 +666,39 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		}
 	}
 
-	// Always set these fields as they are required
-	state.Groups = make([]types.Int64, len(host.Groups))
-	for i, group := range host.Groups {
-		state.Groups[i] = types.Int64Value(int64(group.ID))
+	// Only populate list attributes when the API returns entries. When the
+	// list is empty, keep the attribute null so it round-trips with a config
+	// that leaves it unset (writing [] against a null config causes
+	// permanent drift: [] -> null on every plan).
+	if len(host.Groups) > 0 {
+		state.Groups = make([]types.Int64, len(host.Groups))
+		for i, group := range host.Groups {
+			state.Groups[i] = types.Int64Value(int64(group.ID))
+		}
+	} else {
+		state.Groups = nil
 	}
 
-	state.Templates = make([]types.Int64, len(host.Templates))
-	for i, tmpl := range host.Templates {
-		state.Templates[i] = types.Int64Value(int64(tmpl.ID))
+	if len(host.Templates) > 0 {
+		state.Templates = make([]types.Int64, len(host.Templates))
+		for i, tmpl := range host.Templates {
+			state.Templates[i] = types.Int64Value(int64(tmpl.ID))
+		}
+	} else {
+		state.Templates = nil
 	}
 
 	// Get macros for the host
-	macros, err := r.client.GetHostMacros(host.ID)
+	macros, err := r.client.GetHostMacros(ctx, host.ID)
 	if err != nil {
-		tflog.Error(ctx, "Error fetching host macros", map[string]interface{}{
+		tflog.Warn(ctx, "Error fetching host macros", map[string]interface{}{
 			"host_id": host.ID,
 			"error":   err.Error(),
 		})
-	} else if len(macros) > 0 {
+	} else {
+		state.Macros = nil
+	}
+	if len(macros) > 0 {
 		state.Macros = make([]macroModel, len(macros))
 		for i, m := range macros {
 			mac := macroModel{
@@ -804,7 +720,7 @@ func (r *hostResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			state.Macros[i] = mac
 		}
 
-		tflog.Error(ctx, "Host macros retrieved", map[string]interface{}{
+		tflog.Debug(ctx, "Host macros retrieved", map[string]interface{}{
 			"host":   host.Name,
 			"count":  len(macros),
 			"macros": macros,
@@ -833,222 +749,13 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// Use the ID from the state for updating
 	hostID := int(state.ID.ValueInt64())
 
-	tflog.Error(ctx, "Updating host", map[string]interface{}{
+	tflog.Info(ctx, "Updating host", map[string]interface{}{
 		"name": plan.Name.ValueString(),
 		"id":   hostID,
 	})
 
-	// Create update request using the same structure as create
-	updateReq := &client.CreateHostRequest{
-		MonitoringServerID: int(plan.MonitoringServerID.ValueInt64()),
-		Name:               plan.Name.ValueString(),
-		Address:            plan.Address.ValueString(),
-	}
-
-	// Only include fields that are actually set in the plan
-	if !plan.Alias.IsNull() {
-		v := plan.Alias.ValueString()
-		updateReq.Alias = &v
-	}
-	if !plan.SNMPCommunity.IsNull() {
-		v := plan.SNMPCommunity.ValueString()
-		updateReq.SNMPCommunity = &v
-	}
-	if !plan.SNMPVersion.IsNull() {
-		v := plan.SNMPVersion.ValueString()
-		updateReq.SNMPVersion = &v
-	}
-	if !plan.TimezoneID.IsNull() {
-		v := int(plan.TimezoneID.ValueInt64())
-		updateReq.TimezoneID = &v
-	}
-	if !plan.SeverityID.IsNull() {
-		v := int(plan.SeverityID.ValueInt64())
-		updateReq.SeverityID = &v
-	}
-	if !plan.CheckCommandID.IsNull() {
-		v := int(plan.CheckCommandID.ValueInt64())
-		updateReq.CheckCommandID = &v
-	}
-	if !plan.CheckTimeperiodID.IsNull() {
-		v := int(plan.CheckTimeperiodID.ValueInt64())
-		updateReq.CheckTimeperiodID = &v
-	}
-	if !plan.MaxCheckAttempts.IsNull() {
-		v := int(plan.MaxCheckAttempts.ValueInt64())
-		updateReq.MaxCheckAttempts = &v
-	}
-	if !plan.NormalCheckInterval.IsNull() {
-		v := int(plan.NormalCheckInterval.ValueInt64())
-		updateReq.NormalCheckInterval = &v
-	}
-	if !plan.RetryCheckInterval.IsNull() {
-		v := int(plan.RetryCheckInterval.ValueInt64())
-		updateReq.RetryCheckInterval = &v
-	}
-	if !plan.ActiveCheckEnabled.IsNull() {
-		v := int(plan.ActiveCheckEnabled.ValueInt64())
-		updateReq.ActiveCheckEnabled = &v
-	}
-	if !plan.PassiveCheckEnabled.IsNull() {
-		v := int(plan.PassiveCheckEnabled.ValueInt64())
-		updateReq.PassiveCheckEnabled = &v
-	}
-	if !plan.NotificationEnabled.IsNull() {
-		v := int(plan.NotificationEnabled.ValueInt64())
-		updateReq.NotificationEnabled = &v
-	}
-	if !plan.NotificationOptions.IsNull() {
-		v := int(plan.NotificationOptions.ValueInt64())
-		updateReq.NotificationOptions = &v
-	}
-	if !plan.NotificationInterval.IsNull() {
-		v := int(plan.NotificationInterval.ValueInt64())
-		updateReq.NotificationInterval = &v
-	}
-	if !plan.NotificationTimeperiodID.IsNull() {
-		v := int(plan.NotificationTimeperiodID.ValueInt64())
-		updateReq.NotificationTimeperiodID = &v
-	}
-	if !plan.FirstNotificationDelay.IsNull() {
-		v := int(plan.FirstNotificationDelay.ValueInt64())
-		updateReq.FirstNotificationDelay = &v
-	}
-	if !plan.RecoveryNotificationDelay.IsNull() {
-		v := int(plan.RecoveryNotificationDelay.ValueInt64())
-		updateReq.RecoveryNotificationDelay = &v
-	}
-	if !plan.AcknowledgementTimeout.IsNull() {
-		v := int(plan.AcknowledgementTimeout.ValueInt64())
-		updateReq.AcknowledgementTimeout = &v
-	}
-	if !plan.FreshnessChecked.IsNull() {
-		v := int(plan.FreshnessChecked.ValueInt64())
-		updateReq.FreshnessChecked = &v
-	}
-	if !plan.FreshnessThreshold.IsNull() {
-		v := int(plan.FreshnessThreshold.ValueInt64())
-		updateReq.FreshnessThreshold = &v
-	}
-	if !plan.FlapDetectionEnabled.IsNull() {
-		v := int(plan.FlapDetectionEnabled.ValueInt64())
-		updateReq.FlapDetectionEnabled = &v
-	}
-	if !plan.LowFlapThreshold.IsNull() {
-		v := int(plan.LowFlapThreshold.ValueInt64())
-		updateReq.LowFlapThreshold = &v
-	}
-	if !plan.HighFlapThreshold.IsNull() {
-		v := int(plan.HighFlapThreshold.ValueInt64())
-		updateReq.HighFlapThreshold = &v
-	}
-	if !plan.EventHandlerEnabled.IsNull() {
-		v := int(plan.EventHandlerEnabled.ValueInt64())
-		updateReq.EventHandlerEnabled = &v
-	}
-	if !plan.EventHandlerCommandID.IsNull() {
-		v := int(plan.EventHandlerCommandID.ValueInt64())
-		updateReq.EventHandlerCommandID = &v
-	}
-
-	// Only include non-empty arrays
-	if len(plan.CheckCommandArgs) > 0 {
-		args := make([]string, len(plan.CheckCommandArgs))
-		for i, arg := range plan.CheckCommandArgs {
-			args[i] = arg.ValueString()
-		}
-		updateReq.CheckCommandArgs = args
-	}
-	if len(plan.EventHandlerCommandArgs) > 0 {
-		args := make([]string, len(plan.EventHandlerCommandArgs))
-		for i, arg := range plan.EventHandlerCommandArgs {
-			args[i] = arg.ValueString()
-		}
-		updateReq.EventHandlerCommandArgs = args
-	}
-	if len(plan.Categories) > 0 {
-		categories := make([]int, len(plan.Categories))
-		for i, cat := range plan.Categories {
-			categories[i] = int(cat.ValueInt64())
-		}
-		updateReq.Categories = categories
-	}
-
-	// Always include groups and templates as they are required
-	if len(plan.Groups) > 0 {
-		groups := make([]int, len(plan.Groups))
-		for i, grp := range plan.Groups {
-			groups[i] = int(grp.ValueInt64())
-		}
-		updateReq.Groups = groups
-	}
-	if len(plan.Templates) > 0 {
-		templates := make([]int, len(plan.Templates))
-		for i, tpl := range plan.Templates {
-			templates[i] = int(tpl.ValueInt64())
-		}
-		updateReq.Templates = templates
-	}
-
-	// Only include non-empty string fields
-	if !plan.NoteURL.IsNull() {
-		v := plan.NoteURL.ValueString()
-		updateReq.NoteURL = &v
-	}
-	if !plan.Note.IsNull() {
-		v := plan.Note.ValueString()
-		updateReq.Note = &v
-	}
-	if !plan.ActionURL.IsNull() {
-		v := plan.ActionURL.ValueString()
-		updateReq.ActionURL = &v
-	}
-	if !plan.IconAlternative.IsNull() {
-		v := plan.IconAlternative.ValueString()
-		updateReq.IconAlternative = &v
-	}
-	if !plan.Comment.IsNull() {
-		v := plan.Comment.ValueString()
-		updateReq.Comment = &v
-	}
-	if !plan.GeoCoords.IsNull() {
-		v := plan.GeoCoords.ValueString()
-		updateReq.GeoCoords = &v
-	}
-	if !plan.IsActivated.IsNull() {
-		v := plan.IsActivated.ValueBool()
-		updateReq.IsActivated = &v
-	}
-
-	// Handle macros - always include them in the update to ensure
-	// they are properly updated per the OpenAPI documentation
-	if len(plan.Macros) > 0 {
-		tflog.Error(ctx, "Including macros in update", map[string]interface{}{
-			"host":   plan.Name.ValueString(),
-			"macros": len(plan.Macros),
-		})
-
-		updateReq.Macros = make([]client.HostMacro, len(plan.Macros))
-		for i, m := range plan.Macros {
-			macro := client.HostMacro{
-				Name:       m.Name.ValueString(),
-				IsPassword: m.IsPassword.ValueBool(),
-			}
-
-			// Always include the value when updating
-			if !m.Value.IsNull() {
-				v := m.Value.ValueString()
-				macro.Value = &v
-			}
-
-			if !m.Description.IsNull() {
-				v := m.Description.ValueString()
-				macro.Description = &v
-			}
-
-			updateReq.Macros[i] = macro
-		}
-	}
+	// Convert the plan model to an API request (shared with Create).
+	updateReq := planToCreateHostRequest(&plan)
 
 	// Call API to update host using the ID directly - pass context to the client.UpdateHost method
 	if err := r.client.UpdateHost(ctx, hostID, updateReq); err != nil {
@@ -1063,13 +770,7 @@ func (r *hostResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	plan.ID = state.ID
 
 	// Generate and reload configuration if enabled
-	if err := r.handleConfigurationReload(); err != nil {
-		resp.Diagnostics.AddError(
-			"Error after updating host",
-			err.Error(),
-		)
-		return
-	}
+	r.handleConfigurationReload(ctx, &resp.Diagnostics)
 
 	// Update state with plan
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
@@ -1085,26 +786,28 @@ func (r *hostResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	// Use the host ID from state for deletion
 	hostID := int(state.ID.ValueInt64())
 
-	tflog.Error(ctx, "Deleting host", map[string]interface{}{
+	tflog.Info(ctx, "Deleting host", map[string]interface{}{
 		"name": state.Name.ValueString(),
 		"id":   hostID,
 	})
 
-	// Delete the host using the ID directly - pass context to the client.DeleteHost method
+	// Delete the host using the ID directly. A 404 means the host is already
+	// gone (deleted out-of-band): treat as success so Terraform removes it
+	// from state instead of getting stuck.
 	if err := r.client.DeleteHost(ctx, hostID); err != nil {
-		resp.Diagnostics.AddError(
-			"Error deleting host",
-			fmt.Sprintf("Could not delete host %s (ID: %d): %v", state.Name.ValueString(), hostID, err),
-		)
-		return
+		if client.IsNotFound(err) {
+			tflog.Warn(ctx, "Host already deleted out-of-band", map[string]interface{}{
+				"id": hostID,
+			})
+		} else {
+			resp.Diagnostics.AddError(
+				"Error deleting host",
+				fmt.Sprintf("Could not delete host %s (ID: %d): %v", state.Name.ValueString(), hostID, err),
+			)
+			return
+		}
 	}
 
 	// Generate and reload configuration if enabled
-	if err := r.handleConfigurationReload(); err != nil {
-		resp.Diagnostics.AddError(
-			"Error after deleting host",
-			err.Error(),
-		)
-		return
-	}
+	r.handleConfigurationReload(ctx, &resp.Diagnostics)
 }
