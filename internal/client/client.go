@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +16,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-// Global mutex for host operations.
+// defaultTimeout bounds every HTTP round trip so a hung Centreon API can
+// never wedge a Terraform apply indefinitely.
+const defaultTimeout = 30 * time.Second
+
+// maxResponseBytes caps response body reads so a misbehaving server or
+// proxy cannot exhaust provider memory.
+const maxResponseBytes = 16 << 20 // 16 MiB
+
+// hostMutex serializes host mutations (create/update/delete). The Centreon
+// API historically rejects concurrent writes to the configuration, so writes
+// are kept sequential — but without artificial delays. Reads stay parallel.
 var hostMutex sync.Mutex
 
 type Client struct {
@@ -127,9 +139,9 @@ type Host struct {
 	MaxCheckAttempts          int              `json:"max_check_attempts"`
 	NormalCheckInterval       int              `json:"normal_check_interval"`
 	RetryCheckInterval        int              `json:"retry_check_interval"`
-	ActiveCheckEnabled        int              `json:"active_check_enabled"`  // 0=disabled, 1=enabled
-	PassiveCheckEnabled       int              `json:"passive_check_enabled"` // 0=disabled, 1=enabled
-	NotificationEnabled       int              `json:"notification_enabled"`  // 0=disabled, 1=enabled
+	ActiveCheckEnabled        int              `json:"active_check_enabled"`  // 0=disabled, 1=enabled, 2=inherit/default
+	PassiveCheckEnabled       int              `json:"passive_check_enabled"` // 0=disabled, 1=enabled, 2=inherit/default
+	NotificationEnabled       int              `json:"notification_enabled"`  // 0=disabled, 1=enabled, 2=inherit/default
 	NotificationOptions       int              `json:"notification_options"`
 	NotificationInterval      int              `json:"notification_interval"`
 	NotificationTimeperiodID  int              `json:"notification_timeperiod_id"`
@@ -138,12 +150,12 @@ type Host struct {
 	FirstNotificationDelay    int              `json:"first_notification_delay"`
 	RecoveryNotificationDelay int              `json:"recovery_notification_delay"`
 	AcknowledgementTimeout    int              `json:"acknowledgement_timeout"`
-	FreshnessChecked          int              `json:"freshness_checked"` // 0=disabled, 1=enabled
+	FreshnessChecked          int              `json:"freshness_checked"` // 0=disabled, 1=enabled, 2=inherit/default
 	FreshnessThreshold        int              `json:"freshness_threshold"`
-	FlapDetectionEnabled      int              `json:"flap_detection_enabled"` // 0=disabled, 1=enabled
+	FlapDetectionEnabled      int              `json:"flap_detection_enabled"` // 0=disabled, 1=enabled, 2=inherit/default
 	LowFlapThreshold          int              `json:"low_flap_threshold"`
 	HighFlapThreshold         int              `json:"high_flap_threshold"`
-	EventHandlerEnabled       int              `json:"event_handler_enabled"` // 0=disabled, 1=enabled
+	EventHandlerEnabled       int              `json:"event_handler_enabled"` // 0=disabled, 1=enabled, 2=inherit/default
 	EventHandlerCommandID     int              `json:"event_handler_command_id"`
 	EventHandlerCommandArgs   []string         `json:"event_handler_command_args"`
 	NoteURL                   string           `json:"note_url"`
@@ -161,6 +173,7 @@ type Host struct {
 
 type HostResponse struct {
 	Result []Host `json:"result"`
+	Meta   Meta   `json:"meta"`
 }
 
 type CreateHostRequest struct {
@@ -233,6 +246,10 @@ type HostTemplatesResponse struct {
 	Meta   Meta           `json:"meta"`
 }
 
+type HostMacroResponse struct {
+	Result []HostMacro `json:"result"`
+}
+
 type Meta struct {
 	Page   int                    `json:"page"`
 	Limit  int                    `json:"limit"`
@@ -248,121 +265,81 @@ func NewClient(protocol, server, port, apiVersion, apiKey string) *Client {
 		Port:       port,
 		APIVersion: apiVersion,
 		APIKey:     apiKey,
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Timeout: defaultTimeout},
 		BaseURL:    fmt.Sprintf("%s://%s:%s/centreon/api/%s", protocol, server, port, apiVersion),
 	}
 }
 
-// prettyPrintJSON formats JSON string with indentation if possible.
+// prettyPrintJSON formats a JSON string with indentation if it parses as
+// JSON; otherwise it returns the input unchanged.
 func prettyPrintJSON(input string) string {
-	// Trim whitespace to make detection more reliable.
 	trimmed := strings.TrimSpace(input)
-
-	// Skip empty strings.
 	if len(trimmed) == 0 {
 		return input
 	}
-
-	// Check if this looks like JSON.
 	if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
 		(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
-
 		var parsed interface{}
-		err := json.Unmarshal([]byte(trimmed), &parsed)
-		if err == nil {
-			// It's valid JSON, so pretty-print it.
-			prettyJSON, err := json.MarshalIndent(parsed, "", "  ")
-			if err == nil {
-				return string(prettyJSON)
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			if pretty, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+				return string(pretty)
 			}
 		}
 	}
-
-	// If not JSON or error formatting, return original.
 	return input
 }
 
-func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
-	ctx := req.Context()
-	var reqBody []byte
-	if req.Body != nil {
-		// Read request body for logging.
-		reqBody, _ = io.ReadAll(req.Body)
-		// Reset the body for the actual request
-		req.Body = io.NopCloser(bytes.NewBuffer(reqBody))
-	}
-
-	// Try to pretty-print JSON for logging
-	bodyStr := string(reqBody)
-	formattedBody := prettyPrintJSON(bodyStr)
-
-	// Always log request details at ERROR level to ensure visibility
-	tflog.Error(ctx, "API Request", map[string]interface{}{
-		"method":  req.Method,
-		"url":     req.URL.String(),
-		"headers": req.Header,
-		"body":    formattedBody,
-	})
-
-	// Set auth header
+// doRequest executes an HTTP request against the Centreon API. It never logs
+// request or response bodies (they can contain SNMP communities and macro
+// passwords) and returns non-2xx responses as *APIError.
+func (c *Client) doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
 	req.Header.Set("X-AUTH-TOKEN", c.APIKey)
 
-	// Execute the API request
-	startTime := time.Now()
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(req)
-	duration := time.Since(startTime)
-
 	if err != nil {
-		tflog.Error(ctx, "API request failed", map[string]interface{}{
+		tflog.Warn(ctx, "Centreon API request failed", map[string]interface{}{
 			"method":   req.Method,
-			"url":      req.URL.String(),
-			"duration": duration.String(),
+			"path":     req.URL.Path,
+			"duration": time.Since(start).String(),
 			"error":    err.Error(),
 		})
-		return nil, fmt.Errorf("error making request: %v", err)
+		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
-	// Read response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		tflog.Error(ctx, "Error reading response body", map[string]interface{}{
-			"error": err.Error(),
-		})
-		resp.Body.Close()
-		return nil, fmt.Errorf("error reading response body: %v", err)
-	}
-
-	// Replace body for subsequent readers
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	resp.Body.Close()
-	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+	if err != nil {
+		tflog.Warn(ctx, "Error reading Centreon API response body", map[string]interface{}{
+			"status": resp.StatusCode,
+			"error":  err.Error(),
+		})
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 
-	// Pretty-print response JSON if possible
-	respBodyStr := string(respBody)
-	formattedRespBody := prettyPrintJSON(respBodyStr)
-
-	// Always log response details at ERROR level to ensure visibility
-	tflog.Error(ctx, "API Response", map[string]interface{}{
-		"method":     req.Method,
-		"url":        req.URL.String(),
-		"statusCode": resp.StatusCode,
-		"duration":   duration.String(),
-		"body":       formattedRespBody,
+	tflog.Debug(ctx, "Centreon API response", map[string]interface{}{
+		"method":   req.Method,
+		"path":     req.URL.Path,
+		"status":   resp.StatusCode,
+		"duration": time.Since(start).String(),
+		"bytes":    len(body),
 	})
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, HandleAPIError(resp, respBody)
+		return nil, HandleAPIError(resp, body)
 	}
 
 	return resp, nil
 }
 
-func (c *Client) GetPlatformInfo() (*PlatformInfo, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/platform/installation/status", c.BaseURL), nil)
+func (c *Client) GetPlatformInfo(ctx context.Context) (*PlatformInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/platform/installation/status", nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -370,20 +347,27 @@ func (c *Client) GetPlatformInfo() (*PlatformInfo, error) {
 
 	var platformInfo PlatformInfo
 	if err := json.NewDecoder(resp.Body).Decode(&platformInfo); err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &platformInfo, nil
 }
 
-func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, error) {
-	url := fmt.Sprintf("%s/configuration/hosts?limit=%d&page=%d&search=%s",
-		c.BaseURL, limit, page, search)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+// GetHosts lists hosts. The search parameter is a raw JSON object string
+// (e.g. `{"name":"web-1"}`) and is URL-encoded as a query value.
+func (c *Client) GetHosts(ctx context.Context, limit, page int, search string) (*HostResponse, error) {
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("page", strconv.Itoa(page))
+	if search != "" {
+		q.Set("search", search)
 	}
 
-	resp, err := c.doRequest(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/configuration/hosts?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -391,46 +375,37 @@ func (c *Client) GetHosts(limit int, page int, search string) (*HostResponse, er
 
 	var hostResponse HostResponse
 	if err := json.NewDecoder(resp.Body).Decode(&hostResponse); err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &hostResponse, nil
 }
 
-// Modified to return the host ID.
+// CreateHost creates a host and returns the new host ID.
 func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, error) {
-	// Acquire lock to ensure sequential processing
+	// The Centreon API serializes configuration writes poorly; keep writes
+	// sequential (no artificial delay, the mutex is enough).
 	hostMutex.Lock()
 	defer hostMutex.Unlock()
 
-	// Add a delay before creating the host to ensure any previous operations are complete
-	time.Sleep(1 * time.Second)
-
-	url := fmt.Sprintf("%s/configuration/hosts", c.BaseURL)
-	jsonData, err := json.Marshal(host)
+	payload, err := json.Marshal(host)
 	if err != nil {
-		tflog.Error(ctx, "Error marshaling host data", map[string]interface{}{
-			"error": err.Error(),
-		})
-		return 0, fmt.Errorf("error marshaling host data: %v", err)
+		return 0, fmt.Errorf("error marshaling host data: %w", err)
 	}
 
-	tflog.Error(ctx, "Creating host - Request data", map[string]interface{}{
-		"url":  url,
-		"data": string(jsonData),
+	tflog.Debug(ctx, "Creating host", map[string]interface{}{
+		"name": host.Name,
+		"url":  c.BaseURL + "/configuration/hosts",
 	})
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/configuration/hosts", bytes.NewReader(payload))
 	if err != nil {
-		tflog.Error(ctx, "Error creating request", map[string]interface{}{
-			"error": err.Error(),
-		})
-		return 0, fmt.Errorf("error creating request: %v", err)
+		return 0, fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
-		tflog.Error(ctx, "Host creation failed", map[string]interface{}{
+		tflog.Warn(ctx, "Host creation failed", map[string]interface{}{
 			"name":  host.Name,
 			"error": err.Error(),
 		})
@@ -438,46 +413,32 @@ func (c *Client) CreateHost(ctx context.Context, host *CreateHostRequest) (int, 
 	}
 	defer resp.Body.Close()
 
-	// Parse the response to get the host ID directly from the creation response if possible
-	var responseData map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&responseData); err == nil {
-		if id, ok := responseData["id"].(float64); ok {
-			hostID := int(id)
-			tflog.Error(ctx, "Host created successfully with ID from response", map[string]interface{}{
-				"name": host.Name,
-				"id":   hostID,
-			})
-			return hostID, nil
-		}
+	// Centreon >= 23.04 returns the created host ID in the response body.
+	var created struct {
+		ID int `json:"id"`
 	}
-
-	// If we couldn't get ID from response, fall back to the original method
-	// Wait a short time to ensure the host is available in the API
-	time.Sleep(2 * time.Second)
-
-	hosts, err := c.GetHosts(1, 1, fmt.Sprintf("{\"name\":\"%s\"}", host.Name))
-	if err != nil {
-		tflog.Error(ctx, "Error getting ID for newly created host", map[string]interface{}{
-			"name":  host.Name,
-			"error": err.Error(),
-		})
-		return 0, fmt.Errorf("host was created but error getting its ID: %v", err)
-	}
-
-	if len(hosts.Result) == 0 {
-		tflog.Error(ctx, "Host created but not found on lookup", map[string]interface{}{
+	if err := json.NewDecoder(resp.Body).Decode(&created); err == nil && created.ID != 0 {
+		tflog.Debug(ctx, "Host created", map[string]interface{}{
 			"name": host.Name,
+			"id":   created.ID,
 		})
+		return created.ID, nil
+	}
+
+	// Fallback for API versions that do not return the ID: resolve it by
+	// searching for the exact host name (JSON-marshalled for safety).
+	nameQuery, err := json.Marshal(map[string]string{"name": host.Name})
+	if err != nil {
+		return 0, fmt.Errorf("host was created but error building ID lookup: %w", err)
+	}
+	hosts, err := c.GetHosts(ctx, 1, 1, string(nameQuery))
+	if err != nil {
+		return 0, fmt.Errorf("host was created but error getting its ID: %w", err)
+	}
+	if len(hosts.Result) == 0 {
 		return 0, fmt.Errorf("host was created but could not retrieve its ID")
 	}
-
-	hostID := hosts.Result[0].ID
-	tflog.Error(ctx, "Host created successfully with ID", map[string]interface{}{
-		"name": host.Name,
-		"id":   hostID,
-	})
-
-	return hostID, nil
+	return hosts.Result[0].ID, nil
 }
 
 // UpdateHost updates a host by ID.
@@ -485,44 +446,22 @@ func (c *Client) UpdateHost(ctx context.Context, hostID int, host *CreateHostReq
 	hostMutex.Lock()
 	defer hostMutex.Unlock()
 
-	// Add a delay before updating the host
-	time.Sleep(1 * time.Second)
-
-	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
-
-	tflog.Error(ctx, "Updating host", map[string]interface{}{
-		"name": host.Name,
-		"id":   hostID,
-		"url":  url,
-	})
-
-	jsonData, err := json.Marshal(host)
+	payload, err := json.Marshal(host)
 	if err != nil {
-		return fmt.Errorf("error marshaling host data: %v", err)
+		return fmt.Errorf("error marshaling host data: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID), bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
-		tflog.Error(ctx, "Error updating host", map[string]interface{}{
-			"host_id": hostID,
-			"name":    host.Name,
-			"error":   err.Error(),
-		})
 		return err
 	}
 	defer resp.Body.Close()
-
-	tflog.Error(ctx, "Host updated successfully", map[string]interface{}{
-		"host_id": hostID,
-		"name":    host.Name,
-	})
-
 	return nil
 }
 
@@ -531,47 +470,33 @@ func (c *Client) DeleteHost(ctx context.Context, hostID int) error {
 	hostMutex.Lock()
 	defer hostMutex.Unlock()
 
-	// Add a delay before deleting the host
-	time.Sleep(1 * time.Second)
-
-	url := fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID)
-
-	tflog.Error(ctx, "Deleting host", map[string]interface{}{
-		"id":  hostID,
-		"url": url,
-	})
-
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, fmt.Sprintf("%s/configuration/hosts/%d", c.BaseURL, hostID), nil)
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return fmt.Errorf("error creating request: %w", err)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
-		tflog.Error(ctx, "Error deleting host", map[string]interface{}{
-			"host_id": hostID,
-			"error":   err.Error(),
-		})
 		return err
 	}
 	defer resp.Body.Close()
-
-	tflog.Error(ctx, "Host deleted successfully", map[string]interface{}{
-		"host_id": hostID,
-	})
-
 	return nil
 }
 
-func (c *Client) GetMonitoringServers(limit int, page int, search string) (*MonitoringServersResponse, error) {
-	url := fmt.Sprintf("%s/configuration/monitoring-servers?limit=%d&page=%d&search=%s",
-		c.BaseURL, limit, page, search)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+func (c *Client) GetMonitoringServers(ctx context.Context, limit, page int, search string) (*MonitoringServersResponse, error) {
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("page", strconv.Itoa(page))
+	if search != "" {
+		q.Set("search", search)
 	}
 
-	resp, err := c.doRequest(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/configuration/monitoring-servers?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -579,20 +504,25 @@ func (c *Client) GetMonitoringServers(limit int, page int, search string) (*Moni
 
 	var response MonitoringServersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &response, nil
 }
 
-func (c *Client) GetHostGroups(limit int, page int, search string) (*HostGroupsResponse, error) {
-	url := fmt.Sprintf("%s/monitoring/hostgroups?limit=%d&page=%d&search=%s",
-		c.BaseURL, limit, page, search)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+func (c *Client) GetHostGroups(ctx context.Context, limit, page int, search string) (*HostGroupsResponse, error) {
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("page", strconv.Itoa(page))
+	if search != "" {
+		q.Set("search", search)
 	}
 
-	resp, err := c.doRequest(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/monitoring/hostgroups?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -600,20 +530,25 @@ func (c *Client) GetHostGroups(limit int, page int, search string) (*HostGroupsR
 
 	var response HostGroupsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &response, nil
 }
 
-func (c *Client) GetHostTemplates(limit int, page int, search string) (*HostTemplatesResponse, error) {
-	url := fmt.Sprintf("%s/configuration/hosts/templates?limit=%d&page=%d&search=%s",
-		c.BaseURL, limit, page, search)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+func (c *Client) GetHostTemplates(ctx context.Context, limit, page int, search string) (*HostTemplatesResponse, error) {
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("page", strconv.Itoa(page))
+	if search != "" {
+		q.Set("search", search)
 	}
 
-	resp, err := c.doRequest(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/configuration/hosts/templates?"+q.Encode(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -621,60 +556,48 @@ func (c *Client) GetHostTemplates(limit int, page int, search string) (*HostTemp
 
 	var response HostTemplatesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("error decoding response: %v", err)
+		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 	return &response, nil
 }
 
-// ReloadConfiguration generates and reloads configuration for all monitoring servers.
-func (c *Client) ReloadConfiguration() error {
-	url := fmt.Sprintf("%s/configuration/monitoring-servers/generate-and-reload", c.BaseURL)
-	req, err := http.NewRequest("GET", url, nil)
+// ReloadConfiguration generates and reloads the configuration for all
+// monitoring servers.
+func (c *Client) ReloadConfiguration(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/configuration/monitoring-servers/generate-and-reload", nil)
 	if err != nil {
-		return fmt.Errorf("error creating request: %v", err)
+		return fmt.Errorf("error creating request: %w", err)
 	}
 
-	tflog.Error(context.Background(), "Reloading configuration",
-		map[string]interface{}{
-			"url": url,
-		})
-
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
-	tflog.Error(context.Background(), "Configuration reload response",
-		map[string]interface{}{
-			"status_code": resp.StatusCode,
-		})
-
 	return nil
 }
 
-type HostMacroResponse struct {
-	Result []HostMacro `json:"result"`
-}
-
 // GetHostMacros retrieves macros for a given host ID.
-func (c *Client) GetHostMacros(hostID int) ([]HostMacro, error) {
-	url := fmt.Sprintf("%s/configuration/hosts/%d/macros", c.BaseURL, hostID)
-	req, err := http.NewRequest("GET", url, nil)
+func (c *Client) GetHostMacros(ctx context.Context, hostID int) ([]HostMacro, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/configuration/hosts/%d/macros", c.BaseURL, hostID), nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request to fetch host macros: %v", err)
+		return nil, fmt.Errorf("error creating request to fetch host macros: %w", err)
 	}
 
-	resp, err := c.doRequest(req)
+	resp, err := c.doRequest(ctx, req)
 	if err != nil {
+		// Centreon returns 404 for the macros endpoint when the host has
+		// no macros; treat that as an empty macro list.
+		if IsNotFound(err) {
+			return []HostMacro{}, nil
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	var macroResponse HostMacroResponse
 	if err := json.NewDecoder(resp.Body).Decode(&macroResponse); err != nil {
-		return nil, fmt.Errorf("error decoding host macros response: %v", err)
+		return nil, fmt.Errorf("error decoding host macros response: %w", err)
 	}
-
 	return macroResponse.Result, nil
 }

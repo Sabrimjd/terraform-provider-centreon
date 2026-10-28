@@ -77,7 +77,7 @@ func (d *platformInfoDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	platformInfo, err := d.client.GetPlatformInfo()
+	platformInfo, err := d.client.GetPlatformInfo(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Read Platform Info",

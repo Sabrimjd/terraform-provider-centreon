@@ -1,34 +1,38 @@
-# Visit https://golangci-lint.run/ for usage documentation
-# and information on other useful linters
+version: "2"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - durationcheck
     - errcheck
     - copyloopvar
     - forcetypeassert
     - godot
-    - gofmt
-    - gosimple
     - ineffassign
     - makezero
     - misspell
     - nilerr
     - predeclared
     - staticcheck
-    #- usetesting Not available in github ci
     - unconvert
     - unparam
     - unused
     - govet
+  settings:
+    errcheck:
+      exclude-functions:
+        # Closing HTTP response bodies after a full read is best-effort;
+        # errors there are neither actionable nor reportable to callers.
+        - (net/http.Response).Close
+        - (io.Closer).Close
+
+formatters:
+  enable:
+    - gofmt
 
 run:
   timeout: 5m
-
-linters-settings:
-  gofmt:
-    simplify: true

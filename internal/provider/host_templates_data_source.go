@@ -287,6 +287,14 @@ func (d *hostTemplatesDataSource) Configure(_ context.Context, req datasource.Co
 }
 
 func (d *hostTemplatesDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	if d.client == nil {
+		resp.Diagnostics.AddError(
+			"Client not configured",
+			"The provider client was not configured; check the provider block",
+		)
+		return
+	}
+
 	var state hostTemplatesDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
@@ -294,26 +302,10 @@ func (d *hostTemplatesDataSource) Read(ctx context.Context, req datasource.ReadR
 		return
 	}
 
-	// Initialize empty search if not provided
-	if state.Search == nil {
-		state.Search = &searchModel{
-			Name:  types.StringNull(),
-			Value: types.StringNull(),
-		}
-	}
-
-	// Create search JSON
-	searchQuery := "{}"
-	if !state.Search.Name.IsNull() && !state.Search.Value.IsNull() {
-		searchQuery = fmt.Sprintf("{\"%s\":\"%s\"}",
-			state.Search.Name.ValueString(),
-			state.Search.Value.ValueString())
-	}
-
-	templatesResponse, err := d.client.GetHostTemplates(
+	templatesResponse, err := d.client.GetHostTemplates(ctx,
 		int(state.Limit.ValueInt64()),
 		int(state.Page.ValueInt64()),
-		searchQuery,
+		buildSearchQuery(state.Search),
 	)
 	if err != nil {
 		resp.Diagnostics.AddError(
